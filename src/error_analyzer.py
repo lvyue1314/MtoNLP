@@ -25,8 +25,6 @@ import re
 import sys
 from typing import Optional, Tuple
 
-import difflib
-
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _project_root)
 

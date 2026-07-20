@@ -346,7 +346,9 @@ class ChartQAEvaluation:
             logger.info("【额外】t-SNE 交融机制可视化")
             logger.info("=" * 60)
             from visualize_tsne import run_tsne_analysis
-            run_tsne_analysis()
+            # 传递 max_samples 以控制 t-SNE 分析的数据量
+            tsne_n = min(max_samples, 30) if max_samples else 30
+            run_tsne_analysis(max_samples=tsne_n)
 
         # ---- 完成 ----
         end_time = datetime.now()

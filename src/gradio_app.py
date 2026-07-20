@@ -147,8 +147,8 @@ def run_multi_inference(image, question: str, models_selected: list) -> dict:
         empty = {"__all_empty__": "⚠️ 请至少选择一个模型"}
         return empty
 
-    # 保存上传图片到临时路径
-    tmp_dir = os.path.join(_project_root, "data", "gradio_uploads")
+    # 保存上传图片到临时路径（使用网络盘路径，避免跨机器丢失）
+    tmp_dir = os.path.join(CHARTQA_DATA, "gradio_uploads")
     os.makedirs(tmp_dir, exist_ok=True)
     tmp_path = os.path.join(tmp_dir, "upload_temp.png")
 
@@ -188,15 +188,22 @@ def run_multi_inference(image, question: str, models_selected: list) -> dict:
 
 def _find_demo_images(max_count: int = 3) -> list[str]:
     """从 ChartQA-X 数据集中随机选取示例图片"""
-    img_dir = os.path.join(_project_root, "data", "chartqa_x", "processed")
-    # 优先从已处理的数据中找
     candidates = []
-    for root, _, files in os.walk(os.path.join(_project_root, "data")):
-        for f in files:
+    # 优先从 CHARTQA_DATA 的 images 目录找
+    img_dir = os.path.join(CHARTQA_DATA, "images")
+    if os.path.isdir(img_dir):
+        for f in os.listdir(img_dir):
             if f.lower().endswith((".png", ".jpg", ".jpeg")):
-                candidates.append(os.path.join(root, f))
+                candidates.append(os.path.join(img_dir, f))
+    # 回退：遍历本地 data 目录
+    data_dir = os.path.join(_project_root, "data")
+    if os.path.isdir(data_dir):
+        for root, _, files in os.walk(data_dir):
+            for f in files:
+                if f.lower().endswith((".png", ".jpg", ".jpeg")):
+                    candidates.append(os.path.join(root, f))
 
-    # 如果没有本地图片，尝试从 CHARTQA_DATA 读取标注信息
+    # 如果还没有图片，尝试从 CHARTQA_DATA 读取标注信息
     if not candidates:
         ann_path = os.path.join(CHARTQA_DATA, "annotations", "test.json")
         if os.path.exists(ann_path):
@@ -221,7 +228,7 @@ def create_demo() -> gr.Blocks:
 
     # ---- 评测结果（如有） ----
     comparison_text = "（请先运行评测 → 结果将自动显示）"
-    comp_path = os.path.join(_project_root, "results", "comparison", "model_comparison.json")
+    comp_path = os.path.join(RESULTS_DIR, "comparison", "model_comparison.json")
     if os.path.exists(comp_path):
         with open(comp_path, "r", encoding="utf-8") as f:
             comp_data = json.load(f)

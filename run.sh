@@ -36,7 +36,11 @@ show_help() {
     echo "  help          显示此帮助"
     echo ""
     echo "高级选项可直接传给 Python:"
-    echo "  ./run.sh --verbose --max-samples 20"
+    echo "  ./run.sh --verbose --max-samples 20 --no-resume"
+    echo ""
+    echo "tsne / gradio 支持透传参数:"
+    echo "  ./run.sh tsne --max-samples 20 --skip-llava"
+    echo "  ./run.sh gradio --port 8080 --share"
     echo ""
 }
 
