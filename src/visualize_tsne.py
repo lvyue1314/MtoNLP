@@ -51,6 +51,25 @@ TSNE_OUTPUT_DIR = os.path.join(_project_root, "tsne_visualization")
 UNIFIED_LAYERS = [0, 4, 8, 12, 16, 20, 24, 28, 32]
 
 
+def _free_gpu_memory():
+    """
+    释放 GPU 显存。
+
+    每个模型约 14GB，在提取完一个模型的特征后必须释放，
+    否则两个模型同时驻留会导致 OOM（~28GB+）。
+    """
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            logger.info("GPU 显存已释放")
+    except Exception:
+        pass
+
+
 # ================================================================
 # 1. 数据准备：从 ChartQA-X 抽取样本
 # ================================================================
@@ -190,6 +209,15 @@ def extract_llava_features(
             }
 
     logger.info(f"LLaVA: {valid_count}/{len(samples)} 个样本成功, {len(result)} 层")
+
+    # 显式释放模型以节省显存（调用方也会执行 _free_gpu_memory）
+    del model
+    try:
+        import torch
+        torch.cuda.empty_cache()
+    except Exception:
+        pass
+
     return result
 
 
@@ -276,6 +304,15 @@ def extract_gemma_features(
             }
 
     logger.info(f"Gemma 4: {valid_count}/{len(samples)} 个样本成功, {len(result)} 层")
+
+    # 显式释放模型以节省显存
+    del model
+    try:
+        import torch
+        torch.cuda.empty_cache()
+    except Exception:
+        pass
+
     return result
 
 
@@ -614,9 +651,12 @@ def run_tsne_analysis(
         logger.info("=" * 60)
         try:
             llava_features = extract_llava_features(samples)
+            # 显式释放模型显存，避免与下一个模型叠加
+            _free_gpu_memory()
         except Exception as e:
             logger.error(f"LLaVA 分析失败: {e}")
             import traceback; traceback.print_exc()
+            _free_gpu_memory()
     else:
         logger.info("跳过 LLaVA 分析 (--skip-llava)")
 
@@ -627,9 +667,11 @@ def run_tsne_analysis(
         logger.info("=" * 60)
         try:
             gemma_features = extract_gemma_features(samples)
+            _free_gpu_memory()
         except Exception as e:
             logger.error(f"Gemma 4 分析失败: {e}")
             import traceback; traceback.print_exc()
+            _free_gpu_memory()
     else:
         logger.info("跳过 Gemma 4 分析 (--skip-gemma)")
 

@@ -132,15 +132,16 @@ print('评测完成！')
         ;;
     tsne)
         check_deps
+        shift   # 去掉 "tsne"，剩余参数透传给 Python
         echo "🧬 运行 t-SNE 交融机制分析..."
         cd "$WORKSPACE"
-        python -c "from src.visualize_tsne import run_tsne_analysis; run_tsne_analysis()"
+        python -m src.visualize_tsne "$@"   # 支持: ./run.sh tsne --max-samples 20 --skip-llava
         ;;
     gradio)
-        check_deps
+        shift
         echo "🌐 启动 Gradio 演示界面..."
         cd "$WORKSPACE"
-        python -m src.gradio_app
+        python -m src.gradio_app "$@"       # 支持: ./run.sh gradio --port 8080 --share
         ;;
     help|--help|-h)
         show_help

@@ -76,7 +76,7 @@ class ChartQAEvaluation:
     # ------------------------------------------------------------------
 
     def check_services(self) -> bool:
-        """检查 vLLM 服务是否在运行"""
+        """检查 vLLM 服务是否运行（端口 + API 可达性双重检查）"""
         vllm_models = {
             name: cfg for name, cfg in MODELS.items()
             if cfg["model_type"] == "vllm" and cfg.get("api_base")
@@ -92,16 +92,34 @@ class ChartQAEvaluation:
                 host = "localhost"
                 port = parse_port_from_url(cfg["api_base"])
 
+            # 第一层：TCP 端口检查
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(2)
             result = sock.connect_ex((host, port))
             sock.close()
 
-            if result == 0:
-                logger.info(f"✅ {name} 服务运行中 ({host}:{port})")
-            else:
-                logger.error(f"❌ {name} 服务未运行 ({host}:{port})")
+            if result != 0:
+                logger.error(f"❌ {name} 端口未开放 ({host}:{port})")
                 all_running = False
+                continue
+
+            # 第二层：发送真实 API 请求验证 vLLM 就绪
+            try:
+                import openai
+                client = openai.OpenAI(
+                    base_url=cfg["api_base"],
+                    api_key="EMPTY",
+                    timeout=10,
+                )
+                # 使用 /models 端点验证服务真正就绪（不消耗推理资源）
+                client.models.list()
+                logger.info(f"✅ {name} 服务就绪 ({host}:{port})")
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ {name} 端口可达但 API 未就绪 ({host}:{port}): {e}\n"
+                    f"   模型可能仍在加载中，推理时会自动重试"
+                )
+                # 端口开了但 API 没准备好——不标记为失败，推理时会报更明确的错
 
         return all_running
 
@@ -127,6 +145,7 @@ class ChartQAEvaluation:
         api_base: Optional[str],
         output_name: str,
         max_samples: int = None,
+        resume: bool = True,
     ) -> list[dict]:
         """步骤 2: 运行单个模型推理"""
         logger.info("=" * 60)
@@ -136,7 +155,7 @@ class ChartQAEvaluation:
         # 检查是否已完成
         result_path = os.path.join(self.results_dir, output_name, f"{output_name}_results.json")
 
-        if os.path.exists(result_path):
+        if resume and os.path.exists(result_path):
             with open(result_path, "r", encoding="utf-8") as f:
                 existing = json.load(f)
             with open(self.data_path, "r", encoding="utf-8") as f:
@@ -158,7 +177,7 @@ class ChartQAEvaluation:
             results = inferencer.run_inference(
                 self.data_path,
                 max_samples=max_samples,
-                resume=True,
+                resume=resume,
             )
         elif model_type == "baseline":
             baseline = OCRLLMBaseline()
@@ -166,7 +185,7 @@ class ChartQAEvaluation:
                 self.data_path,
                 os.path.join(self.results_dir, output_name),
                 max_samples=max_samples,
-                resume=True,
+                resume=resume,
             )
         else:
             raise ValueError(f"未知模型类型: {model_type}")
@@ -262,6 +281,7 @@ class ChartQAEvaluation:
         max_samples: int = None,
         skip_data: bool = False,
         run_tsne: bool = False,
+        resume: bool = True,
     ):
         """运行完整评测流水线"""
         start_time = datetime.now()
@@ -270,6 +290,7 @@ class ChartQAEvaluation:
         logger.info("🚀 ChartQA-X 三模型评测系统")
         logger.info(f"开始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info(f"目标模型: {', '.join(model_names)}")
+        logger.info(f"断点续传: {'开启' if resume else '关闭'}")
         if max_samples:
             logger.info(f"样本限制: {max_samples}")
         if IS_ROCM:
@@ -306,6 +327,7 @@ class ChartQAEvaluation:
                 api_base=cfg.get("api_base"),
                 output_name=cfg["output_name"],
                 max_samples=max_samples,
+                resume=resume,
             )
 
         # ---- 评测 ----
@@ -402,6 +424,10 @@ def main():
         help="运行 t-SNE 交融机制可视化（耗时较长）",
     )
     parser.add_argument(
+        "--no-resume", action="store_true",
+        help="禁用断点续传，从头重新推理所有样本",
+    )
+    parser.add_argument(
         "--version", action="version",
         version="ChartQA-X Evaluation System v1.0.0",
     )
@@ -445,6 +471,7 @@ def main():
         max_samples=args.max_samples,
         skip_data=args.skip_data,
         run_tsne=args.tsne,
+        resume=not args.no_resume,
     )
 
 

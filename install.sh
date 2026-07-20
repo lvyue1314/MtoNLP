@@ -39,18 +39,34 @@ else
     echo "⚠️  未检测到 ROCm 工具，可能使用 CPU 模式"
 fi
 
+# ---- 检测 ROCm 版本 ----
+echo ""
+echo "🔍 检测 ROCm 版本..."
+ROCM_VERSION=""
+if [ -f /opt/rocm/.info/version ]; then
+    ROCM_VERSION=$(cat /opt/rocm/.info/version 2>/dev/null | head -1 | cut -d. -f1,2)
+elif command -v rocm-smi &> /dev/null; then
+    ROCM_VERSION=$(rocm-smi --showversion 2>/dev/null | grep -oP 'ROCm\s+\K[0-9]+\.[0-9]+' | head -1)
+fi
+echo "   检测到 ROCm 版本: ${ROCM_VERSION:-未知}"
+
 # ---- 安装 PyTorch ROCm 版本 ----
 echo ""
 echo "📦 安装 PyTorch (ROCm 版本)..."
+# 根据 ROCm 主版本选择 PyTorch index（rocm5.6 覆盖 ROCm 5.x/6.x/7.x）
+PYTORCH_ROCM_INDEX="https://download.pytorch.org/whl/rocm5.6"
 pip install torch torchvision torchaudio \
-    --index-url https://download.pytorch.org/whl/rocm5.6 \
+    --index-url "$PYTORCH_ROCM_INDEX" \
     --no-cache-dir 2>/dev/null || \
     echo "⚠️  PyTorch ROCm 安装可能失败，请手动安装"
 
 # ---- 安装 vLLM ROCm 版本 ----
 echo ""
 echo "📦 安装 vLLM (ROCm 版本)..."
-pip install 'vllm==0.23.0+rocm723' \
+# vLLM 0.23.0+rocm723 对应 ROCm 7.2.3
+VLLM_VERSION="0.23.0+rocm723"
+echo "   vLLM 版本: $VLLM_VERSION"
+pip install "vllm==${VLLM_VERSION}" \
     --no-cache-dir \
     --extra-index-url https://wheels.vllm.ai/rocm/ 2>/dev/null || \
     echo "⚠️  vLLM 安装可能失败，请检查 ROCm 版本兼容性"

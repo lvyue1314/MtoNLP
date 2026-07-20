@@ -93,25 +93,46 @@ def levenshtein_distance(a: str, b: str) -> int:
     return prev[n]
 
 
+# 英文停用词表（避免在幻觉检测中误判常见词汇）
+_ENGLISH_STOP_WORDS = {
+    "the", "is", "at", "in", "of", "and", "to", "a", "an", "it", "on",
+    "for", "with", "as", "by", "be", "this", "that", "from", "are", "was",
+    "were", "has", "have", "had", "not", "but", "or", "can", "will", "would",
+    "could", "should", "may", "might", "about", "than", "then", "also", "just",
+    "only", "all", "some", "any", "each", "every", "both", "few", "more",
+    "most", "other", "same", "such", "no", "new", "one", "two", "first",
+    "last", "long", "great", "little", "own", "old", "big", "high",
+    "different", "small", "large", "next", "early", "important", "public",
+    "bad", "good", "able", "what", "which", "who", "whom", "when", "where",
+    "why", "how", "there", "here", "their", "they", "its", "theirs",
+}
+
+
 def extract_keywords(text: str) -> set[str]:
     """
-    从文本中提取关键数字和名词/实体。
+    从文本中提取关键数字和名词/实体（已过滤停用词）。
 
     Returns:
-        关键字符串集合（数字 + 长度≥2的英文单词）
+        关键字符串集合（数字 + 长度≥2的非停用英文单词）
     """
     text = str(text).strip()
     # 提取数字（含小数）
     numbers = set(re.findall(r"\d+\.?\d*", text))
-    # 提取英文单词（≥2字符）
-    words = set(w.lower() for w in re.findall(r"[a-zA-Z]{2,}", text))
+    # 提取英文单词（≥2字符），过滤停用词
+    words = {
+        w.lower() for w in re.findall(r"[a-zA-Z]{2,}", text)
+        if w.lower() not in _ENGLISH_STOP_WORDS
+    }
     return numbers | words
 
 
 def normalize_for_compare(text: str) -> str:
-    """标准化文本用于比较：去标点、小写、合并空格"""
+    """标准化文本用于比较：去标点（保留数字小数点）、小写、合并空格"""
     text = str(text).strip().lower()
+    # 保护数字中的小数点
+    text = re.sub(r"(\d)\.(\d)", r"\1<DOT>\2", text)
     text = re.sub(r"[^a-z0-9\s]", "", text)
+    text = text.replace("<DOT>", ".")
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 

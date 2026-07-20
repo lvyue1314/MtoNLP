@@ -89,16 +89,29 @@ def parse_port_from_url(url: str) -> int:
 
 
 def get_optimal_workers() -> int:
-    """根据 GPU 显存自动调整并发数"""
+    """
+    根据 GPU 显存自动调整并发数。
+
+    注意: vLLM 服务本身已经占用大量显存（通常 8-16GB），
+    并发请求主要消耗推理时的 KV cache。保守估计每 worker 需要 ~6GB 可用显存，
+    且总并发数不超过 4（避免 vLLM 服务端过载排队）。
+    """
     try:
         import torch
         if torch.cuda.is_available():
             gpu_memory = torch.cuda.get_device_properties(0).total_memory
-            workers = max(1, min(8, gpu_memory // (4 * 1024 ** 3)))
-            print(f"[INFO] GPU 显存: {gpu_memory // 1024 ** 3} GB, 并发数: {workers}")
+
+            # 保守估计：假设 vLLM 已占用约 60% 显存用于模型权重
+            # 剩余可用显存 // 6GB per worker = 安全并发数
+            available_for_inference = gpu_memory * 0.4  # 40% 可用于并发请求
+            workers = max(1, min(4, int(available_for_inference // (6 * 1024 ** 3))))
+
+            print(f"[INFO] GPU 显存: {gpu_memory // 1024 ** 3} GB, "
+                  f"估计可用: {available_for_inference // 1024 ** 3:.0f} GB, "
+                  f"安全并发数: {workers}")
             return workers
     except Exception as e:
-        print(f"[WARN] GPU 检测失败: {e}, 使用默认并发数 1")
+        print(f"[WARN] GPU 检测失败: {e}, 使用默认并发数 2")
     print("[INFO] 未检测到 GPU, 使用 CPU 模式")
     return 1
 
@@ -150,6 +163,29 @@ def setup_logging(name: str = None, verbose: bool = False) -> logging.Logger:
     return logger
 
 
+def resolve_gemma_path() -> str:
+    """
+    解析 Gemma 4 模型的实际磁盘路径。
+
+    HuggingFace/modelscope 下载的目录名可能与 config 中的不完全一致
+    （大小写差异），此函数尝试所有可能的路径变体。
+    """
+    candidates = [
+        os.path.join(MODELS_DIR, "google", "gemma-4-E4B-it"),
+        os.path.join(MODELS_DIR, "google", "gemma-4-e4b-it"),
+        os.path.join(MODELS_DIR, "google", "gemma-4-E4B-it"),
+        os.path.join(MODELS_DIR, "gemma-4-E4B-it"),
+        os.path.join(MODELS_DIR, "google", "gemma-4-e4b-it"),
+        "/workspace/models/google/gemma-4-E4B-it",   # 另一个常见挂载点
+        "/workspace/models/google/gemma-4-e4b-it",
+    ]
+    for path in candidates:
+        if os.path.isdir(path):
+            return path
+    # 回退到默认路径（即使不存在，后续模块会提示下载）
+    return candidates[0]
+
+
 def ensure_directories():
     """确保所有必要目录存在"""
     dirs = [
@@ -176,7 +212,8 @@ def ensure_directories():
 # ============================================================
 IS_ROCM = detect_rocm()
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", get_optimal_workers()))
-VLLM_CONCURRENT = int(os.environ.get("VLLM_CONCURRENT", MAX_WORKERS))
+# vLLM并发默认更保守（vLLM服务端有自身排队机制，客户端并发过高反而导致超时）
+VLLM_CONCURRENT = int(os.environ.get("VLLM_CONCURRENT", min(MAX_WORKERS, 2)))
 
 # 启动时创建目录
 ensure_directories()

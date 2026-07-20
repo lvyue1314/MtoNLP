@@ -43,7 +43,10 @@ class Evaluator:
         只保留字母、数字和空格，移除其他符号。
         """
         answer = str(answer).strip().lower()
+        # 保护数字中的小数点：先将 "3.14" 替换为 "3<DOT>14"，再去掉其他标点，再还原
+        answer = re.sub(r"(\d)\.(\d)", r"\1<DOT>\2", answer)
         answer = re.sub(r"[^a-z0-9\s]", "", answer)
+        answer = answer.replace("<DOT>", ".")
         answer = re.sub(r"\s+", " ", answer)
         return answer.strip()
 

@@ -32,7 +32,11 @@ logger = setup_logging(__name__)
 # ================================================================
 
 def _setup_chinese_font() -> Optional[str]:
-    """配置中文字体（Linux / macOS / Windows 兼容）"""
+    """配置中文字体（Linux / macOS / Windows 兼容），结果自动缓存"""
+    # 如果已检测过，直接返回缓存结果
+    if hasattr(_setup_chinese_font, "_cached"):
+        return _setup_chinese_font._cached
+
     system = platform.system()
 
     if system == "Linux":
@@ -53,17 +57,22 @@ def _setup_chinese_font() -> Optional[str]:
         ]
 
     available = {f.name for f in fm.fontManager.ttflist}
+    found = None
     for font in candidates:
         if font in available:
             plt.rcParams["font.sans-serif"] = [font]
             plt.rcParams["axes.unicode_minus"] = False
             logger.info(f"使用字体: {font}")
-            return font
+            found = font
+            break
 
-    logger.warning("未找到中文字体，使用默认字体")
-    plt.rcParams["font.sans-serif"] = ["DejaVu Sans"]
-    plt.rcParams["axes.unicode_minus"] = False
-    return None
+    if found is None:
+        logger.warning("未找到中文字体，使用默认字体")
+        plt.rcParams["font.sans-serif"] = ["DejaVu Sans"]
+        plt.rcParams["axes.unicode_minus"] = False
+
+    _setup_chinese_font._cached = found
+    return found
 
 
 # ================================================================
@@ -122,7 +131,7 @@ def plot_model_comparison(comparison_path: str, output_dir: str = None) -> Optio
 
     plt.tight_layout()
 
-    for fmt in ["png", "pdf"]:
+    for fmt in ["png"]:  # 默认只输出 PNG（PDF/SVG 较大且服务器通常不需要）
         path = os.path.join(output_dir, f"model_comparison.{fmt}")
         plt.savefig(path, dpi=300, bbox_inches="tight")
         logger.info(f"图表已保存: {path}")
