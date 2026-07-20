@@ -3,16 +3,16 @@
 步骤 4.1: Gradio 演示系统
 
 提供 Web 界面:
-    - 上传论文图表
+    - 上传论文图表（支持 png/jpg/jpeg）
     - 输入问题
-    - 选择模型（OCR+LLM / LLaVA / Gemma 4）
-    - 返回答案 + 推理时间
-    - 展示三类模型对比信息
+    - 多选模型（Gemma 4 / LLaVA / OCR+LLM），同时对比
+    - 每个模型独立显示回答 + 推理耗时
+    - 从数据集中选取 2-3 张示例图表供快速体验
 
 启动方式:
     python gradio_app.py
-    # 或
-    python -m src.gradio_app
+    python gradio_app.py --port 7860 --share
+    ./run.sh gradio
 """
 
 import os
@@ -20,51 +20,80 @@ import sys
 import time
 import base64
 import json
+import argparse
+import random
 from pathlib import Path
+from typing import Optional
 
 import gradio as gr
 
 # 确保 src 可导入
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _project_root)
 
-from config import MODELS, MODELS_DIR, CHARTQA_DATA, setup_logging
+from config import (
+    MODELS, WORKSPACE, RESULTS_DIR, CHARTQA_DATA, DATA_IMAGES,
+    setup_logging,
+)
 
 logger = setup_logging(__name__)
 
+# ================================================================
+# 懒加载的模型实例（避免启动时占用资源）
+# ================================================================
+_baseline_model: Optional["OCRLLMBaseline"] = None
+
+
+def _get_baseline():
+    """懒加载 OCR+LLM 基线模型（线程安全）"""
+    global _baseline_model
+    if _baseline_model is None:
+        from baseline_ocr_llm import OCRLLMBaseline
+        _baseline_model = OCRLLMBaseline()
+    return _baseline_model
+
 
 # ================================================================
-# 推理函数
+# 图片编码（复用 batch_inference 的 base64 方式）
 # ================================================================
 
-def inference_baseline(image_path: str, question: str) -> tuple[str, float]:
-    """OCR + LLM 基线推理"""
-    from baseline_ocr_llm import OCRLLMBaseline
+def _encode_image_to_data_url(image_path: str) -> str:
+    """将本地图片编码为 base64 data URL（OpenAI 兼容格式）"""
+    with open(image_path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("utf-8")
+    return f"data:image/png;base64,{encoded}"
 
-    # 懒加载
-    if not hasattr(inference_baseline, "_model"):
-        inference_baseline._model = OCRLLMBaseline()
 
-    model = inference_baseline._model
+# ================================================================
+# 单模型推理
+# ================================================================
+
+def _infer_baseline(image_path: str, question: str) -> tuple[str, float]:
+    """OCR + LLM 基线推理，返回 (answer, elapsed_seconds)"""
+    model = _get_baseline()
     start = time.time()
-    answer = model.answer_question(image_path, question)
+    try:
+        answer = model.answer_question(image_path, question)
+    except Exception as e:
+        answer = f"❌ 推理失败: {e}"
     elapsed = time.time() - start
     return answer, elapsed
 
 
-def inference_vllm(image_path: str, question: str, model_key: str) -> tuple[str, float]:
-    """通过 vLLM API 推理（Gemma 4 / LLaVA）"""
+def _infer_vllm(image_path: str, question: str, model_key: str) -> tuple[str, float]:
+    """通过 vLLM OpenAI 兼容 API 推理，返回 (answer, elapsed_seconds)"""
     import openai
 
     cfg = MODELS[model_key]
-    client = openai.OpenAI(base_url=cfg["api_base"], api_key="EMPTY", timeout=120)
-
-    # 读取图片并编码
-    with open(image_path, "rb") as f:
-        encoded = base64.b64encode(f.read()).decode("utf-8")
-    image_url = f"data:image/png;base64,{encoded}"
+    image_url = _encode_image_to_data_url(image_path)
 
     start = time.time()
     try:
+        client = openai.OpenAI(
+            base_url=cfg["api_base"],
+            api_key="EMPTY",
+            timeout=120,
+        )
         response = client.chat.completions.create(
             model=cfg["model_name"],
             messages=[{
@@ -79,59 +108,127 @@ def inference_vllm(image_path: str, question: str, model_key: str) -> tuple[str,
         )
         answer = response.choices[0].message.content.strip()
     except Exception as e:
-        answer = f"[错误] vLLM 服务不可用: {e}\n请确认已启动 vLLM 服务（端口 {cfg['api_base']}）"
-
+        answer = (
+            f"❌ vLLM 服务不可用\n"
+            f"   端口: {cfg['api_base']}\n"
+            f"   错误: {e}\n\n"
+            f"请确认已启动 vLLM 服务"
+        )
     elapsed = time.time() - start
     return answer, elapsed
 
 
-def run_inference(image, question: str, model_choice: str) -> tuple[str, str]:
-    """Gradio 回调函数"""
+# ================================================================
+# 统一回调：对选中的模型分别推理
+# ================================================================
+
+def run_multi_inference(image, question: str, models_selected: list) -> dict:
+    """
+    对用户选中的所有模型分别推理。
+
+    Args:
+        image: 上传的图片（filepath 或 PIL Image）
+        question: 问题文本
+        models_selected: 选中的模型标签列表，如 ["Gemma 4", "LLaVA"]
+
+    Returns:
+        字典，键名对应各 gradio 输出组件
+    """
+    # ---- 输入校验 ----
     if image is None:
-        return "请先上传一张图片", "N/A"
+        empty = {"__all_empty__": "⚠️ 请先上传一张图片"}
+        return empty
 
     if not question or not question.strip():
-        return "请输入问题", "N/A"
+        empty = {"__all_empty__": "⚠️ 请输入问题"}
+        return empty
+
+    if not models_selected:
+        empty = {"__all_empty__": "⚠️ 请至少选择一个模型"}
+        return empty
 
     # 保存上传图片到临时路径
-    tmp_path = os.path.join(CHARTQA_DATA, "gradio_upload.png")
+    tmp_dir = os.path.join(_project_root, "data", "gradio_uploads")
+    os.makedirs(tmp_dir, exist_ok=True)
+    tmp_path = os.path.join(tmp_dir, "upload_temp.png")
+
     if hasattr(image, "save"):
         image.save(tmp_path)
     else:
-        # 已是文件路径
-        tmp_path = image
+        tmp_path = image  # 已是文件路径
 
-    if model_choice == "OCR+LLM Baseline":
-        answer, elapsed = inference_baseline(tmp_path, question.strip())
-    elif model_choice == "LLaVA":
-        answer, elapsed = inference_vllm(tmp_path, question.strip(), "llava")
-    elif model_choice == "Gemma 4":
-        answer, elapsed = inference_vllm(tmp_path, question.strip(), "gemma4")
-    else:
-        answer, elapsed = "未知模型", 0
+    question = question.strip()
+    results = {}
 
-    time_str = f"{elapsed:.2f} 秒"
-    return answer, time_str
+    # ---- 对每个选中的模型推理 ----
+    for model_label in models_selected:
+        try:
+            if model_label == "OCR+LLM Baseline":
+                answer, elapsed = _infer_baseline(tmp_path, question)
+            elif model_label == "LLaVA":
+                answer, elapsed = _infer_vllm(tmp_path, question, "llava")
+            elif model_label == "Gemma 4":
+                answer, elapsed = _infer_vllm(tmp_path, question, "gemma4")
+            else:
+                answer, elapsed = "未知模型", 0.0
+        except Exception as e:
+            answer = f"❌ 未预期错误: {e}"
+            elapsed = 0.0
+
+        # 存储到对应的输出字段
+        results[f"answer_{model_label}"] = answer
+        results[f"time_{model_label}"] = f"{elapsed:.2f} 秒"
+
+    return results
 
 
 # ================================================================
-# Gradio 界面
+# 示例图片加载
+# ================================================================
+
+def _find_demo_images(max_count: int = 3) -> list[str]:
+    """从 ChartQA-X 数据集中随机选取示例图片"""
+    img_dir = os.path.join(_project_root, "data", "chartqa_x", "processed")
+    # 优先从已处理的数据中找
+    candidates = []
+    for root, _, files in os.walk(os.path.join(_project_root, "data")):
+        for f in files:
+            if f.lower().endswith((".png", ".jpg", ".jpeg")):
+                candidates.append(os.path.join(root, f))
+
+    # 如果没有本地图片，尝试从 CHARTQA_DATA 读取标注信息
+    if not candidates:
+        ann_path = os.path.join(CHARTQA_DATA, "annotations", "test.json")
+        if os.path.exists(ann_path):
+            with open(ann_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for item in data[:10]:
+                abs_path = os.path.join(CHARTQA_DATA, item["image_path"])
+                if os.path.exists(abs_path):
+                    candidates.append(abs_path)
+
+    if candidates:
+        return random.sample(candidates, min(max_count, len(candidates)))
+    return []
+
+
+# ================================================================
+# 界面构建
 # ================================================================
 
 def create_demo() -> gr.Blocks:
-    """创建 Gradio 界面"""
+    """构建 Gradio Blocks 界面"""
 
-    # 读取已有评测结果用于展示
-    comparison_text = "（请先运行评测 -> 结果将自动显示在这里）"
-    comp_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "results", "comparison", "model_comparison.json",
-    )
+    # ---- 评测结果（如有） ----
+    comparison_text = "（请先运行评测 → 结果将自动显示）"
+    comp_path = os.path.join(_project_root, "results", "comparison", "model_comparison.json")
     if os.path.exists(comp_path):
         with open(comp_path, "r", encoding="utf-8") as f:
             comp_data = json.load(f)
-        lines = ["| 排名 | 模型 | 精确匹配 | 包含匹配 | F1分数 |",
-                 "|------|------|----------|----------|--------|"]
+        lines = [
+            "| 排名 | 模型 | 精确匹配 | 包含匹配 | F1分数 |",
+            "|------|------|----------|----------|--------|",
+        ]
         for i, item in enumerate(comp_data, 1):
             lines.append(
                 f"| {i} | {item['model']} | {item['exact_match']}% | "
@@ -139,110 +236,151 @@ def create_demo() -> gr.Blocks:
             )
         comparison_text = "\n".join(lines)
 
+    # ---- 示例图片 ----
+    demo_images = _find_demo_images(3)
+
+    # ---- CSS ----
+    custom_css = """
+    .result-box { border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin: 4px 0; }
+    .model-label { font-weight: bold; font-size: 1.1em; margin-bottom: 4px; }
+    """
+
     with gr.Blocks(
         title="📊 论文图表问答系统",
         theme=gr.themes.Soft(),
+        css=custom_css,
     ) as demo:
+        # ============================================================
         # 标题
+        # ============================================================
         gr.Markdown("""
         # 📊 论文图表问答系统
-        ### 对比评测三类模型：OCR+LLM 基线 / LLaVA（外挂式多模态）/ Gemma 4（原生多模态）
+        ### 对比评测：OCR+LLM 基线 / LLaVA（外挂式）/ Gemma 4（原生多模态）
 
-        上传一张论文中的图表，输入问题，选择模型，查看不同模型的回答效果。
+        上传论文图表 → 输入问题 → 勾选模型 → 一键对比三个模型的回答效果。
         """)
 
-        with gr.Row():
-            # 左侧：输入区
-            with gr.Column(scale=1):
+        # ============================================================
+        # 输入区
+        # ============================================================
+        with gr.Row(equal_height=True):
+            with gr.Column(scale=2):
                 gr.Markdown("### 📤 输入")
                 image_input = gr.Image(
                     type="filepath",
-                    label="上传论文图表",
+                    label="上传论文图表（png / jpg）",
+                    height=280,
                 )
                 question_input = gr.Textbox(
-                    label="❓ 请输入问题",
-                    placeholder="例如：2019年的销售额是多少？哪个柱子的值最高？图表中有几条折线？",
-                    lines=3,
-                )
-                model_choice = gr.Radio(
-                    choices=[
-                        "Gemma 4",
-                        "LLaVA",
-                        "OCR+LLM Baseline",
-                    ],
-                    label="🔧 选择模型",
-                    value="Gemma 4",
-                    info="Gemma 4 和 LLaVA 需要先启动 vLLM 服务",
-                )
-                submit_btn = gr.Button("🚀 提交推理", variant="primary", size="lg")
-
-            # 右侧：输出区
-            with gr.Column(scale=1):
-                gr.Markdown("### 💬 输出")
-                answer_output = gr.Textbox(
-                    label="模型回答",
-                    lines=6,
-                    interactive=False,
-                )
-                time_output = gr.Textbox(
-                    label="⏱️ 推理时间",
-                    lines=1,
-                    interactive=False,
+                    label="❓ 问题",
+                    placeholder="例如：2020年的销售额是多少？哪个柱子最高？",
+                    lines=2,
                 )
 
-        # ---- 模型对比信息 ----
+                model_checkbox = gr.CheckboxGroup(
+                    choices=["Gemma 4", "LLaVA", "OCR+LLM Baseline"],
+                    label="🔧 选择模型（可多选对比）",
+                    value=["Gemma 4", "LLaVA", "OCR+LLM Baseline"],
+                    info="需先启动 vLLM 服务才能使用 Gemma 4 / LLaVA",
+                )
+                submit_btn = gr.Button(
+                    "🚀 提交推理",
+                    variant="primary",
+                    size="lg",
+                )
+
+        # ============================================================
+        # 输出区（三列）
+        # ============================================================
+        gr.Markdown("---")
+        gr.Markdown("### 💬 模型回答对比")
+
+        outputs_list = []
+        with gr.Row():
+            for model_label in ["Gemma 4", "LLaVA", "OCR+LLM Baseline"]:
+                with gr.Column(scale=1):
+                    gr.Markdown(f"**{model_label}**")
+                    answer_box = gr.Textbox(
+                        label="回答",
+                        lines=6,
+                        interactive=False,
+                        elem_classes=["result-box"],
+                    )
+                    time_box = gr.Textbox(
+                        label="⏱️ 耗时",
+                        lines=1,
+                        interactive=False,
+                    )
+                    outputs_list.extend([answer_box, time_box])
+
+        # ============================================================
+        # 架构对比信息
+        # ============================================================
         gr.Markdown("---")
         gr.Markdown("### 📌 三类模型架构对比")
-
         with gr.Row():
             with gr.Column():
                 gr.Markdown("""
                 **OCR + LLM 基线**
-                - 输入: 纯文本（OCR 提取）
-                - 视觉→文本融合: ❌ 无融合
-                - 优点: 文字提取准确
-                - 缺点: 无法理解空间关系
+                - 📥 输入: 纯文本（OCR 提取）
+                - 🔗 视觉→文本: ❌ 无融合
+                - ✅ 优点: 文字提取准确
+                - ❌ 缺点: 无法理解空间关系
                 """)
             with gr.Column():
                 gr.Markdown("""
                 **LLaVA（外挂式多模态）**
-                - 输入: 图片 + 问题
-                - 视觉→文本融合: 投影层（Projector）对齐
-                - 优点: 能理解视觉内容
-                - 缺点: 融合有明确分界
+                - 📥 输入: 图片 + 问题
+                - 🔗 视觉→文本: 投影层对齐
+                - ✅ 优点: 能理解视觉内容
+                - ❌ 缺点: 融合有明确分界
                 """)
             with gr.Column():
                 gr.Markdown("""
                 **Gemma 4（原生多模态）**
-                - 输入: 图片 + 问题
-                - 视觉→文本融合: 统一空间（输入层）
-                - 优点: 交融更早更彻底
-                - 缺点: 文字提取不如 OCR
+                - 📥 输入: 图片 + 问题
+                - 🔗 视觉→文本: 统一空间（输入层）
+                - ✅ 优点: 交融更早更彻底
+                - ❌ 缺点: 纯文字提取不如 OCR
                 """)
 
-        # ---- 评测结果 ----
+        # ============================================================
+        # 评测结果
+        # ============================================================
         gr.Markdown("---")
-        gr.Markdown("### 📈 评测结果（自动读取 results/comparison/model_comparison.json）")
+        gr.Markdown("### 📈 批量评测结果")
         gr.Markdown(comparison_text)
 
-        # 绑定事件
-        submit_btn.click(
-            fn=run_inference,
-            inputs=[image_input, question_input, model_choice],
-            outputs=[answer_output, time_output],
-        )
-
+        # ============================================================
         # 示例
+        # ============================================================
         gr.Markdown("---")
-        gr.Markdown("### 💡 示例问题")
+        gr.Markdown("### 💡 示例体验")
         gr.Examples(
             examples=[
-                ["", "What is the highest value in the chart?"],
-                ["", "How many categories are shown?"],
-                ["", "What trend does the line show from 2018 to 2020?"],
-                ["", "Which bar has the largest value?"],
-            ],
+                [img, q] for img in demo_images
+                for q in [
+                    "What is the maximum value in the chart?",
+                    "How many categories are shown?",
+                ]
+            ][:6],
             inputs=[image_input, question_input],
+            label="点击示例自动填充（需要已有数据）",
+        )
+
+        # ============================================================
+        # 绑定事件
+        # ============================================================
+        # 构建输出映射
+        output_keys = []
+        for model_label in ["Gemma 4", "LLaVA", "OCR+LLM Baseline"]:
+            output_keys.append(f"answer_{model_label}")
+            output_keys.append(f"time_{model_label}")
+
+        submit_btn.click(
+            fn=run_multi_inference,
+            inputs=[image_input, question_input, model_checkbox],
+            outputs=outputs_list,
         )
 
     return demo
@@ -253,9 +391,16 @@ def create_demo() -> gr.Blocks:
 # ================================================================
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="ChartQA-X Gradio 演示系统")
+    parser.add_argument("--port", type=int, default=7860, help="服务端口（默认 7860）")
+    parser.add_argument("--share", action="store_true", help="生成公网分享链接")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="绑定地址")
+    args = parser.parse_args()
+
     demo = create_demo()
+    logger.info(f"启动 Gradio 服务于 http://{args.host}:{args.port}")
     demo.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        share=True,  # 生成公网链接
+        server_name=args.host,
+        server_port=args.port,
+        share=args.share,
     )
