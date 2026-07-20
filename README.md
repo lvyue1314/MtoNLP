@@ -256,4 +256,3 @@ python -m src.main --no-resume --max-samples 50
 - [LLaVA 论文](https://llava-vl.github.io/)
 - [vLLM 文档](https://docs.vllm.ai/)
 - [AMD ROCm 入门](https://github.com/datawhalechina/hello-rocm)
-- [AMD 云平台部署 Gemma 4 教程](在AMD云平台部署&运行%20Gemma4%20大模型.md)
