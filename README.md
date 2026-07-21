@@ -280,4 +280,4 @@ python -m src.main --no-resume --max-samples 50
 - [Gemma 4 官方文档](https://ai.google.dev/gemma)
 - [LLaVA 论文](https://llava-vl.github.io/)
 - [vLLM 文档](https://docs.vllm.ai/)
-
+- [AMD ROCm 入门](https://github.com/datawhalechina/hello-rocm)
