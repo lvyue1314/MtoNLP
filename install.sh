@@ -10,7 +10,7 @@ echo "📦 ChartQA-X 评测系统 - 安装脚本 (ROCm)"
 echo "=========================================="
 
 # ---- 环境变量 ----
-export WORKSPACE=${WORKSPACE:-/workspace/template-repos/template-257/repo/MtoNLP}
+export WORKSPACE=${WORKSPACE:-/MtoNLP}
 export LMUData=$WORKSPACE/LMUData
 
 # ============================================================
