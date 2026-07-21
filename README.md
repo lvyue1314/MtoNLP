@@ -69,7 +69,32 @@ chmod +x install.sh run.sh
 ./install.sh
 ```
 
-脚本自动完成：目录创建 → ROCm 版本检测 → PyTorch/vLLM 安装 → 依赖安装 → 模型下载 → 环境变量配置。
+脚本按顺序完成：
+
+1. 目录结构创建
+2. ROCm 版本自动检测（`/opt/rocm/.info/version`）
+3. pip 镜像源配置（腾讯云加速）
+4. 卸载旧版 torchvision/torchaudio（云环境兼容性要求）
+5. **uv pip 安装 vLLM + PyTorch ROCm 全家桶**（精确版本 `vllm==0.23.0+rocm723`）
+6. 安装纯 Python 依赖（`requirements.txt`，不写版本号）
+7. 下载 Gemma 4 E4B 和 LLaVA 1.5-7B 模型
+8. 环境变量写入 `~/.bashrc`
+
+#### 依赖分层
+
+```
+install.sh（硬件层，精确版本）     requirements.txt（应用层，不写版本）
+─────────────────────────────     ───────────────────────────────
+vllm==0.23.0+rocm723              datasets, pandas, numpy, Pillow
+torch (ROCm wheel)                paddlepaddle, paddleocr
+torchvision (ROCm wheel)          openai, gradio
+torchaudio (ROCm wheel)           transformers, accelerate
+fastapi[standard]==0.136.0        sentencepiece, scikit-learn
+                                  matplotlib, seaborn, tqdm
+                                  modelscope, huggingface_hub, urllib3
+```
+
+> **设计原则**：硬件相关包（torch/vllm）由 `install.sh` 精确控制 ROCm 版本，纯 Python 包由 `requirements.txt` 管理且不锁版本号，避免两个文件之间的版本冲突。
 
 ### 3. 启动 vLLM 服务（两个终端）
 
@@ -255,5 +280,4 @@ python -m src.main --no-resume --max-samples 50
 - [Gemma 4 官方文档](https://ai.google.dev/gemma)
 - [LLaVA 论文](https://llava-vl.github.io/)
 - [vLLM 文档](https://docs.vllm.ai/)
-- [AMD ROCm 入门](https://github.com/datawhalechina/hello-rocm)
-- [AMD 云平台部署 Gemma 4 教程](在AMD云平台部署&运行%20Gemma4%20大模型.md)
+

@@ -1,45 +1,32 @@
-# requirements.txt - ChartQA-X 三模型评测系统依赖
-# 针对 AMD ROCm 平台优化 (ROCm 7.2.1)
-# Python 3.10+
+# requirements.txt - ChartQA-X 项目依赖
+# 注意: PyTorch、torchvision、vLLM、fastapi 由 install.sh 独立安装，不在此列出
 
-# ========== 核心框架（ROCm版本） ==========
-# torch ROCm 版本需单独安装:
-#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.6
-# vLLM ROCm 版本:
-#   pip install 'vllm==0.23.0+rocm723' --extra-index-url https://wheels.vllm.ai/rocm/
-vllm>=0.23.0
-torch>=2.0.0
-torchvision>=0.15.0
-transformers>=4.45.0
-accelerate>=0.20.0
-sentencepiece>=0.1.99
+# 数据处理
+datasets
+pandas
+numpy
+Pillow
 
-# ========== 数据处理 ==========
-datasets>=2.12.0
-pandas>=2.0.0
-numpy>=1.24.0
-Pillow>=9.0.0
+# OCR
+paddlepaddle
+paddleocr
 
-# ========== OCR ==========
-paddlepaddle>=2.5.0
-paddleocr>=2.6.0
+# API 与 Web 界面
+openai
+gradio
 
-# ========== API 与 界面 ==========
-openai>=1.0.0
-fastapi[standard]>=0.136.0
-gradio>=4.0.0
+# 机器学习与推理
+transformers
+accelerate
+sentencepiece
+scikit-learn
 
-# ========== 工具 ==========
-tqdm>=4.65.0
-scikit-learn>=1.2.0
+# 可视化
+matplotlib
+seaborn
 
-# ========== 可视化 ==========
-matplotlib>=3.7.0
-seaborn>=0.12.0
-
-# ========== 模型下载 ==========
-modelscope>=1.9.0
-huggingface_hub>=0.16.0
-
-# ========== 其他 ==========
-urllib3>=2.0.0
+# 工具
+tqdm
+modelscope
+huggingface_hub
+urllib3

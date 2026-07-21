@@ -50,34 +50,43 @@ elif command -v rocm-smi &> /dev/null; then
 fi
 echo "   检测到 ROCm 版本: ${ROCM_VERSION:-未知}"
 
-# ---- 安装 PyTorch ROCm 版本 ----
+# ---- 配置 pip 镜像（腾讯云加速） ----
 echo ""
-echo "📦 安装 PyTorch (ROCm 版本)..."
-# 根据 ROCm 主版本选择 PyTorch index（rocm5.6 覆盖 ROCm 5.x/6.x/7.x）
-PYTORCH_ROCM_INDEX="https://download.pytorch.org/whl/rocm5.6"
-pip install torch torchvision torchaudio \
-    --index-url "$PYTORCH_ROCM_INDEX" \
-    --no-cache-dir 2>/dev/null || \
-    echo "⚠️  PyTorch ROCm 安装可能失败，请手动安装"
+echo "⚙️  配置 pip 镜像源..."
+pip config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple/
+echo "✅ pip 镜像已设置为腾讯云"
 
-# ---- 安装 vLLM ROCm 版本 ----
+# ---- 安装 modelscope（用于下载模型） ----
 echo ""
-echo "📦 安装 vLLM (ROCm 版本)..."
-# vLLM 0.23.0+rocm723 对应 ROCm 7.2.3
+echo "📦 安装 modelscope..."
+pip install modelscope -q
+
+# ---- 卸载旧的 torchvision/torchaudio（云环境兼容性要求） ----
+echo ""
+echo "🧹 卸载旧版 torchvision / torchaudio..."
+uv pip uninstall -y torchvision torchaudio 2>/dev/null || echo "  (未安装或已卸载，跳过)"
+
+# ---- 安装 vLLM + PyTorch ROCm 全家桶 ----
+echo ""
+echo "📦 安装 vLLM + torchvision + torchaudio + fastapi (ROCm 版本)..."
+# vLLM 0.23.0+rocm723 匹配 ROCm 7.2.3
 VLLM_VERSION="0.23.0+rocm723"
 echo "   vLLM 版本: $VLLM_VERSION"
-pip install "vllm==${VLLM_VERSION}" \
-    --no-cache-dir \
-    --extra-index-url https://wheels.vllm.ai/rocm/ 2>/dev/null || \
+
+uv pip install "vllm==${VLLM_VERSION}" torchvision torchaudio 'fastapi[standard]==0.136.0' \
+    --no-cache \
+    --index-url https://mirrors.aliyun.com/pypi/simple/ \
+    --extra-index-url https://wheels.vllm.ai/rocm/ \
+    -U 2>/dev/null || \
     echo "⚠️  vLLM 安装可能失败，请检查 ROCm 版本兼容性"
 
-# ---- 安装其他依赖 ----
+# ---- 安装其他 Python 依赖 ----
 echo ""
 echo "📦 安装其他 Python 依赖..."
-pip install -r requirements.txt \
-    --no-cache-dir \
+uv pip install -r requirements.txt \
+    --no-cache \
     -i https://mirrors.cloud.tencent.com/pypi/simple/ 2>/dev/null || \
-    pip install -r requirements.txt --no-cache-dir
+    uv pip install -r requirements.txt --no-cache
 
 # ---- 下载模型（可选） ----
 echo ""
@@ -87,7 +96,6 @@ echo ""
 # Gemma 4 E4B
 if [ ! -d "$WORKSPACE/models/google/gemma-4-E4B-it" ]; then
     echo "下载 Gemma 4 E4B..."
-    pip install modelscope -q
     modelscope download --model google/gemma-4-E4B-it --cache_dir "$WORKSPACE/models"
     echo "✅ Gemma 4 下载完成"
 else
