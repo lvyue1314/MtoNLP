@@ -13,6 +13,130 @@ echo "=========================================="
 export WORKSPACE=${WORKSPACE:-/network-workspace}
 export LMUData=$WORKSPACE/LMUData
 
+# ============================================================
+# 步骤 0: 系统环境诊断
+# ============================================================
+echo ""
+echo "=========================================="
+echo "🔍 步骤 0: 系统环境诊断"
+echo "=========================================="
+
+# 0.1 操作系统与内核
+echo ""
+echo "--- 操作系统 & 内核 ---"
+if [ -f /etc/os-release ]; then
+    grep -E "^NAME=|^VERSION=" /etc/os-release 2>/dev/null
+fi
+echo "内核: $(uname -r)"
+echo "架构: $(uname -m)"
+
+# 0.2 CPU
+echo ""
+echo "--- CPU ---"
+if command -v lscpu &> /dev/null; then
+    lscpu 2>/dev/null | grep -E "Model name|Socket|Thread|Core|CPU\(s\)" | head -5
+else
+    cat /proc/cpuinfo 2>/dev/null | grep "model name" | head -1
+fi
+
+# 0.3 系统内存
+echo ""
+echo "--- 系统内存 ---"
+free -h 2>/dev/null || cat /proc/meminfo 2>/dev/null | grep -E "MemTotal|MemAvailable"
+
+# 0.4 磁盘空间
+echo ""
+echo "--- 磁盘空间 ---"
+echo "当前目录: $(pwd)"
+df -h . 2>/dev/null
+echo ""
+echo "/network-workspace (如果存在):"
+df -h /network-workspace 2>/dev/null || echo "  (未挂载)"
+
+# 磁盘空间预警：模型 ~30GB + 数据 ~1GB + 缓存 ~20GB ≈ 需要 60GB
+echo ""
+echo "--- 磁盘空间检查 ---"
+REQUIRED_GB=60
+# 优先检查 /network-workspace，其次检查当前目录所在分区
+if [ -d /network-workspace ]; then
+    AVAIL_KB=$(df -k /network-workspace 2>/dev/null | tail -1 | awk '{print $4}')
+else
+    AVAIL_KB=$(df -k . 2>/dev/null | tail -1 | awk '{print $4}')
+fi
+
+if [ -n "$AVAIL_KB" ]; then
+    AVAIL_GB=$((AVAIL_KB / 1024 / 1024))
+    echo "可用空间: ${AVAIL_GB} GB  |  需求: ${REQUIRED_GB} GB"
+
+    if [ "$AVAIL_GB" -lt "$REQUIRED_GB" ]; then
+        echo ""
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "║  ⚠️  磁盘空间不足警告                                        ║"
+        echo "║                                                            ║"
+        echo "║  可用空间: ${AVAIL_GB} GB                                   ║"
+        echo "║  建议空间: ${REQUIRED_GB} GB（模型 30G + 数据 1G + 缓存）     ║"
+        echo "║  缺口:     $((REQUIRED_GB - AVAIL_GB)) GB                                    ║"
+        echo "║                                                            ║"
+        echo "║  安装可能因磁盘满而失败，建议先清理空间。                      ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo "按 Ctrl+C 取消安装，或等待 10 秒后自动继续..."
+        sleep 10
+        echo "⚠️  继续安装（磁盘空间不足，可能出现下载失败）"
+    else
+        echo "✅ 磁盘空间充足"
+    fi
+else
+    echo "⚠️  无法检测可用空间，跳过空间检查"
+fi
+
+# 0.5 GPU 信息（最重要）
+echo ""
+echo "--- GPU 信息 ---"
+if command -v rocm-smi &> /dev/null; then
+    echo "GPU 列表:"
+    rocm-smi --showproductname 2>/dev/null
+    echo ""
+    echo "显存使用:"
+    rocm-smi --showmeminfo vram 2>/dev/null
+elif command -v amd-smi &> /dev/null; then
+    amd-smi 2>/dev/null
+elif command -v lspci &> /dev/null; then
+    lspci 2>/dev/null | grep -iE "vga|3d|display|amd"
+else
+    echo "⚠️  无法检测 GPU（缺少 rocm-smi / amd-smi / lspci）"
+fi
+
+# 0.6 ROCm 版本
+echo ""
+echo "--- ROCm 版本 ---"
+if [ -f /opt/rocm/.info/version ]; then
+    ROCM_VERSION=$(cat /opt/rocm/.info/version 2>/dev/null | head -1)
+    echo "ROCm 版本: $ROCM_VERSION"
+elif command -v rocm-smi &> /dev/null; then
+    ROCM_VERSION=$(rocm-smi --showversion 2>/dev/null | grep -oP 'ROCm\s+\K[0-9.]+' | head -1)
+    echo "ROCm 版本: ${ROCM_VERSION:-未知}"
+else
+    echo "⚠️  未检测到 ROCm"
+fi
+
+# 0.7 Python 环境
+echo ""
+echo "--- Python 环境 ---"
+echo "Python: $(python3 --version 2>/dev/null || python --version 2>/dev/null)"
+echo "pip:    $(pip3 --version 2>/dev/null || pip --version 2>/dev/null)"
+echo "PyTorch: $(python3 -c 'import torch; print(torch.__version__)' 2>/dev/null || echo '未安装')"
+echo "CUDA 可用: $(python3 -c 'import torch; print(torch.cuda.is_available())' 2>/dev/null || echo 'N/A')"
+if python3 -c "import torch; print(torch.cuda.is_available())" 2>/dev/null | grep -q "True"; then
+    echo "GPU 名称: $(python3 -c 'import torch; print(torch.cuda.get_device_name(0))' 2>/dev/null || echo 'N/A')"
+    echo "GPU 显存: $(python3 -c 'import torch; print(f\"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB\")' 2>/dev/null || echo 'N/A')"
+fi
+
+echo ""
+echo "=========================================="
+echo "✅ 系统诊断完成"
+echo "=========================================="
+
 # ---- 创建目录 ----
 echo ""
 echo "📁 创建目录结构..."
@@ -22,33 +146,6 @@ mkdir -p $WORKSPACE/results/{gemma4,llava,baseline,comparison}
 mkdir -p $WORKSPACE/tsne_visualization
 mkdir -p $WORKSPACE/error_figures
 echo "✅ 目录已创建"
-
-# ---- 检查 Python ----
-echo ""
-echo "🐍 Python 版本: $(python3 --version 2>/dev/null || python --version 2>/dev/null)"
-
-# ---- 检查 ROCm ----
-echo ""
-echo "🔍 检查 ROCm 环境..."
-if command -v rocm-smi &> /dev/null; then
-    echo "✅ ROCm 已安装"
-    rocm-smi --showproductname 2>/dev/null || echo "  (rocm-smi 详情省略)"
-elif command -v amd-smi &> /dev/null; then
-    echo "✅ AMD GPU 工具已安装"
-else
-    echo "⚠️  未检测到 ROCm 工具，可能使用 CPU 模式"
-fi
-
-# ---- 检测 ROCm 版本 ----
-echo ""
-echo "🔍 检测 ROCm 版本..."
-ROCM_VERSION=""
-if [ -f /opt/rocm/.info/version ]; then
-    ROCM_VERSION=$(cat /opt/rocm/.info/version 2>/dev/null | head -1 | cut -d. -f1,2)
-elif command -v rocm-smi &> /dev/null; then
-    ROCM_VERSION=$(rocm-smi --showversion 2>/dev/null | grep -oP 'ROCm\s+\K[0-9]+\.[0-9]+' | head -1)
-fi
-echo "   检测到 ROCm 版本: ${ROCM_VERSION:-未知}"
 
 # ---- 配置 pip 镜像（腾讯云加速） ----
 echo ""

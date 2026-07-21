@@ -71,14 +71,18 @@ chmod +x install.sh run.sh
 
 脚本按顺序完成：
 
-1. 目录结构创建
-2. ROCm 版本自动检测（`/opt/rocm/.info/version`）
-3. pip 镜像源配置（腾讯云加速）
-4. 卸载旧版 torchvision/torchaudio（云环境兼容性要求）
-5. **uv pip 安装 vLLM + PyTorch ROCm 全家桶**（精确版本 `vllm==0.23.0+rocm723`）
-6. 安装纯 Python 依赖（`requirements.txt`，不写版本号）
-7. 下载 Gemma 4 E4B 和 LLaVA 1.5-7B 模型
-8. 环境变量写入 `~/.bashrc`
+1. **系统环境诊断**（OS/CPU/内存/磁盘/GPU/ROCm/Python）
+2. 目录结构创建
+3. ROCm 版本自动检测（`/opt/rocm/.info/version`）
+4. pip 镜像源配置（腾讯云加速）
+5. 卸载旧版 torchvision/torchaudio（云环境兼容性要求）
+6. **uv pip 安装 vLLM + PyTorch ROCm 全家桶**（精确版本 `vllm==0.23.0+rocm723`）
+7. 安装纯 Python 依赖（`requirements.txt`，不写版本号）
+8. 下载 Gemma 4 E4B 和 LLaVA 1.5-7B 模型
+9. 环境变量写入 `~/.bashrc`
+
+> **磁盘空间预警**：诊断步骤会检查可用空间是否 ≥ 60GB。不足时显示醒目的告警框，
+> 给出 10 秒倒计时 — 按 `Ctrl+C` 取消安装（清理空间后再试），超时则自动继续。
 
 #### 依赖分层
 
