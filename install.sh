@@ -10,7 +10,7 @@ echo "📦 ChartQA-X 评测系统 - 安装脚本 (ROCm)"
 echo "=========================================="
 
 # ---- 环境变量 ----
-export WORKSPACE=${WORKSPACE:-/network-workspace}
+export WORKSPACE=${WORKSPACE:-/workspace/template-repos/template-257/repo/MtoNLP}
 export LMUData=$WORKSPACE/LMUData
 
 # ============================================================
@@ -50,16 +50,16 @@ echo "--- 磁盘空间 ---"
 echo "当前目录: $(pwd)"
 df -h . 2>/dev/null
 echo ""
-echo "/network-workspace (如果存在):"
-df -h /network-workspace 2>/dev/null || echo "  (未挂载)"
+echo "\$WORKSPACE 目录所在分区:"
+df -h "$WORKSPACE" 2>/dev/null || df -h . 2>/dev/null
 
 # 磁盘空间预警：模型 ~30GB + 数据 ~1GB + 缓存 ~20GB ≈ 需要 60GB
 echo ""
 echo "--- 磁盘空间检查 ---"
 REQUIRED_GB=60
-# 优先检查 /network-workspace，其次检查当前目录所在分区
-if [ -d /network-workspace ]; then
-    AVAIL_KB=$(df -k /network-workspace 2>/dev/null | tail -1 | awk '{print $4}')
+# 优先检查 WORKSPACE 所在分区，其次检查当前目录
+if [ -d "$WORKSPACE" ]; then
+    AVAIL_KB=$(df -k "$WORKSPACE" 2>/dev/null | tail -1 | awk '{print $4}')
 else
     AVAIL_KB=$(df -k . 2>/dev/null | tail -1 | awk '{print $4}')
 fi
@@ -221,7 +221,7 @@ if ! grep -q "WORKSPACE=" ~/.bashrc 2>/dev/null; then
     cat >> ~/.bashrc << 'EOF'
 
 # === ChartQA-X 评测系统 ===
-export WORKSPACE=/network-workspace
+export WORKSPACE=/workspace/template-repos/template-257/repo/MtoNLP
 export LMUData=$WORKSPACE/LMUData
 export CHARTQA_DATA=$LMUData/datasets/ChartQA
 export RESULTS_DIR=$WORKSPACE/results

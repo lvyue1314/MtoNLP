@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 # ============================================================
 # 环境变量（可通过 export 覆盖）
 # ============================================================
-WORKSPACE = os.environ.get("WORKSPACE", "/network-workspace")
+WORKSPACE = os.environ.get("WORKSPACE", "/workspace/template-repos/template-257/repo/MtoNLP")
 LMU_DATA = os.environ.get("LMUData", os.path.join(WORKSPACE, "LMUData"))
 CHARTQA_DATA = os.environ.get("CHARTQA_DATA", os.path.join(LMU_DATA, "datasets", "ChartQA"))
 MODELS_DIR = os.environ.get("MODELS_DIR", os.path.join(WORKSPACE, "models"))

@@ -63,8 +63,11 @@ MtoNLP/
 
 ### 2. 一键安装
 
+> **路径说明**：默认工作目录为 `/workspace/template-repos/template-257/repo/MtoNLP`。
+> 可通过 `export WORKSPACE=/your/path` 覆盖。
+
 ```bash
-cd MtoNLP/
+cd /workspace/template-repos/template-257/repo/MtoNLP/
 chmod +x install.sh run.sh
 ./install.sh
 ```
@@ -102,6 +105,31 @@ fastapi[standard]==0.136.0        sentencepiece, scikit-learn
 ### 3. 启动 vLLM 服务（两个终端）
 
 ```bash
+# 1. 首先，确保您在项目根目录或者您的项目实际存放路径
+
+# 2. 确认当前路径正确（应该看到 models/ 目录）
+pwd
+ls -la models/
+
+# 3. 确认模型已下载
+ls -la models/google/gemma-4-E4B-it/
+ls -la models/swift/llava-1.5-7b-hf/
+
+# 步骤 1: 在终端 1 启动 Gemma 4 服务
+vllm serve ./models/google/gemma-4-E4B-it/ --port 8000 --max-model-len 8192
+
+# 步骤 2: 在另一个终端，运行 Gemma 4 的评测
+cd ~/MtoNLP
+./run.sh gemma   # 或 python -m src.main --models gemma4
+
+# 步骤 3: Gemma 4 评测完成后，在终端 1 按 Ctrl+C 停止该服务
+
+# 步骤 4: 在终端 1 启动 LLaVA 服务（端口改为 8001）
+vllm serve ./models/swift/llava-1.5-7b-hf --port 8001 --max-model-len 8192
+
+# 步骤 5: 运行 LLaVA 的评测
+./run.sh llava
+
 # 终端 1 — Gemma 4 E4B
 vllm serve ./models/google/gemma-4-E4B-it/ \
     --served-model-name gemma-4-E4B-it \
