@@ -170,16 +170,17 @@ class VLLMInference:
 
         logger.info(f"待处理: {len(remaining)} 个新样本")
 
-        # ---- 并发推理 ----
-        results = list(existing_results)
+        # ---- 并发推理（保持输入顺序） ----
         data_dir = CHARTQA_DATA
         start_time = time.time()
+        # 用 dict 按原始索引暂存结果，避免 as_completed 乱序
+        indexed_results = {}  # {original_idx: result}
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {}
             for i, item in enumerate(remaining):
                 future = executor.submit(self._process_single, i, item, data_dir)
-                futures[future] = item
+                futures[future] = i  # 记录原始索引
 
             pbar = tqdm(
                 as_completed(futures),
@@ -187,12 +188,20 @@ class VLLMInference:
                 desc=f"{self.output_name} 推理",
             )
             for future in pbar:
+                original_idx = futures[future]
                 result = future.result()
                 with self._lock:
-                    results.append(result)
-                    # 实时保存（断点续传的关键）
-                    with open(output_path, "w", encoding="utf-8") as f:
-                        json.dump(results, f, indent=2, ensure_ascii=False)
+                    indexed_results[original_idx] = result
+
+        # 按原始输入顺序组装最终结果
+        results = list(existing_results)
+        for i in range(len(remaining)):
+            if i in indexed_results:
+                results.append(indexed_results[i])
+
+        # 一次性保存
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
 
         elapsed = time.time() - start_time
         logger.info(f"推理完成: {len(results)} 条, 耗时 {elapsed:.1f}s, 输出: {output_path}")
