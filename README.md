@@ -66,6 +66,8 @@ MtoNLP/
 > 可通过 `export WORKSPACE=/your/path` 覆盖。
 
 ```bash
+cd /
+git clone xxxx
 cd /MtoNLP
 chmod +x install.sh run.sh
 ./install.sh
