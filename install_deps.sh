@@ -93,4 +93,12 @@ fi
 echo ""
 echo "=========================================="
 echo "✅ 依赖检查完成！"
+echo ""
+
+# ---- 导出当前环境快照（云平台销毁后复现用） ----
+LOCK_FILE="$WORKSPACE/requirements_cloud_lock.txt"
+pip freeze > "$LOCK_FILE"
+echo "📋 当前环境快照已保存: $LOCK_FILE"
+echo "   云平台销毁后，在新实例上执行:"
+echo "   uv pip install -r $LOCK_FILE"
 echo "=========================================="
