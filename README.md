@@ -18,8 +18,7 @@
 ```
 MtoNLP/
 ├── README.md                     # 本文件
-├── requirements.txt              # Python 依赖清单
-├── install.sh                    # 一键安装（AMD ROCm 自动检测）
+├── install.sh                    # 一键安装（含全部依赖，AMD ROCm 自动检测）
 ├── run.sh                        # 一键运行（支持 test/quick/full/tsne/gradio）
 │
 ├── src/                          # 源代码
@@ -75,74 +74,69 @@ chmod +x install.sh run.sh
 脚本按顺序完成：
 
 1. **系统环境诊断**（OS/CPU/内存/磁盘/GPU/ROCm/Python — 含磁盘空间预警）
-2. 创建目录结构
-3. 配置 pip 镜像源（腾讯云加速）
-4. 卸载旧版 torchvision/torchaudio（云环境兼容性要求）
-5. **uv pip 安装 vLLM + PyTorch ROCm 全家桶**（精确版本 `vllm==0.23.0+rocm723`）
-6. 安装纯 Python 依赖（`requirements.txt`，不写版本号）
-7. 下载 Gemma 4 E4B 和 LLaVA 1.5-7B 模型
-8. 环境变量写入 `~/.bashrc`
+2. 配置 pip 镜像源 + 安装 modelscope
+3. **下载模型**（Gemma 4 E4B + LLaVA 1.5-7B）+ 验证文件完整性
+4. 卸载旧版 torchvision/torchaudio
+5. **uv pip 安装 vLLM + PyTorch ROCm 全家桶**（`vllm==0.23.0+rocm723`）
+6. **uv pip 安装全部 Python 依赖**（datasets, paddleocr, gradio, transformers 等）
+7. 环境变量写入 `~/.bashrc`
+
+> 所有依赖直接写入 `install.sh`，不再使用独立的 `requirements.txt`。
 
 > **磁盘空间预警**：诊断步骤会检查可用空间是否 ≥ 60GB。不足时显示醒目的告警框，
 > 给出 10 秒倒计时 — 按 `Ctrl+C` 取消安装（清理空间后再试），超时则自动继续。
 
-#### 依赖分层
+#### 依赖清单（全部在 install.sh 中）
 
-```
-install.sh（硬件层，精确版本）     requirements.txt（应用层，不写版本）
-─────────────────────────────     ───────────────────────────────
-vllm==0.23.0+rocm723              datasets, pandas, numpy, Pillow
-torch (ROCm wheel)                paddlepaddle, paddleocr
-torchvision (ROCm wheel)          openai, gradio
-torchaudio (ROCm wheel)           transformers, accelerate
-fastapi[standard]==0.136.0        sentencepiece, scikit-learn
-                                  matplotlib, seaborn, tqdm
-                                  modelscope, huggingface_hub, urllib3
-```
+| 安装阶段 | 包名 | 说明 |
+|----------|------|------|
+| 步骤 1 | `modelscope` | 模型下载工具 |
+| 步骤 5 | `vllm==0.23.0+rocm723`, `torchvision`, `torchaudio`, `fastapi[standard]==0.136.0` | vLLM + PyTorch ROCm 全家桶（阿里云镜像 + vLLM wheels） |
+| 步骤 6 | `datasets`, `pandas`, `numpy`, `Pillow` | 数据处理 |
+| 步骤 6 | `paddlepaddle`, `paddleocr` | OCR 文字提取 |
+| 步骤 6 | `openai`, `gradio` | API 调用 + Web 界面 |
+| 步骤 6 | `transformers`, `accelerate`, `sentencepiece`, `scikit-learn` | 模型推理 + 评估 |
+| 步骤 6 | `matplotlib`, `seaborn`, `tqdm` | 可视化 + 进度条 |
+| 步骤 6 | `huggingface_hub`, `urllib3` | 模型下载辅助 |
 
-> **设计原则**：硬件相关包（torch/vllm）由 `install.sh` 精确控制 ROCm 版本，纯 Python 包由 `requirements.txt` 管理且不锁版本号，避免两个文件之间的版本冲突。
+> **设计原则**：所有依赖集中在 `install.sh` 单一文件中，按博客验证过的顺序安装，不再依赖外部 `requirements.txt`。
 
-### 3. 启动 vLLM 服务（两个终端）
+### 3. 启动 vLLM 服务（⚠️ 串行启动，不可同时运行）
+
+> **显存限制**：单卡 48GB 显存无法同时运行 Gemma 4 E4B + LLaVA 1.5-7B。
+> 必须**先跑完一个模型 → 停止服务 → 再启动下一个**。
 
 ```bash
-# 1. 首先，确保您在项目根目录或者您的项目实际存放路径
+# ====== 第一步：启动 Gemma 4 → 评测 → 停止 ======
+# 终端 1：启动 Gemma 4 服务
 cd /MtoNLP
+vllm serve ./models/google/gemma-4-E4B-it/ \
+    --port 8000 \
+    --max-model-len 4096
 
-# 2. 确认当前路径正确（应该看到 models/ 目录）
-pwd
-ls -la models/
-
-# 3. 确认模型已下载
-ls -la models/google/gemma-4-E4B-it/
-ls -la models/swift/llava-1.5-7b-hf/
-
-# 步骤 1: 在终端 1 启动 Gemma 4 服务
-vllm serve ./models/google/gemma-4-E4B-it/ --port 8000 --max-model-len 8192
-
-# 步骤 2: 在另一个终端，运行 Gemma 4 的评测
+# 终端 2：等服务就绪（看到 "Application startup complete."），运行评测
 cd /MtoNLP
-./run.sh gemma   # 或 python -m src.main --models gemma4
+./run.sh gemma
 
-# 步骤 3: Gemma 4 评测完成后，在终端 1 按 Ctrl+C 停止该服务
+# 终端 1：评测完成后 Ctrl+C 停止 Gemma 4 服务
 
-# 步骤 4: 在终端 1 启动 LLaVA 服务（端口改为 8001）
-vllm serve ./models/swift/llava-1.5-7b-hf --port 8001 --max-model-len 8192
+# ====== 第二步：启动 LLaVA → 评测 → 停止 ======
+# 终端 1：启动 LLaVA 服务
+vllm serve ./models/swift/llava-1.5-7b-hf \
+    --port 8001 \
+    --max-model-len 4096 \
+    --trust-remote-code
 
-# 步骤 5: 运行 LLaVA 的评测
+# 终端 2：等服务就绪，运行评测
 ./run.sh llava
 
-# 终端 1 — Gemma 4 E4B
-vllm serve ./models/google/gemma-4-E4B-it/ \
-    --served-model-name gemma-4-E4B-it \
-    --port 8000 --max-model-len 8192
+# 终端 1：评测完成后 Ctrl+C 停止 LLaVA 服务
 
-# 终端 2 — LLaVA 1.5-7B
-vllm serve ./models/swift/llava-1.5-7b-hf \
-    --served-model-name llava-1.5-7b-hf \
-    --port 8001 --max-model-len 8192
+# ====== 基线模型不需要 vLLM 服务，直接跑 ======
+./run.sh baseline
 ```
 
-看到 `Application startup complete.` 即启动成功。
+看到 `Application startup complete.` 即服务就绪。
 
 ### 4. 运行评测
 

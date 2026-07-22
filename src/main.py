@@ -75,15 +75,21 @@ class ChartQAEvaluation:
     # 服务检查
     # ------------------------------------------------------------------
 
-    def check_services(self) -> bool:
-        """检查 vLLM 服务是否运行（端口 + API 可达性双重检查）"""
-        vllm_models = {
+    def check_services(self, model_names: list[str] = None) -> bool:
+        """检查 vLLM 服务是否运行（仅检查用户请求的模型）"""
+        if model_names is None:
+            model_names = list(MODELS.keys())
+
+        vllm_requested = {
             name: cfg for name, cfg in MODELS.items()
-            if cfg["model_type"] == "vllm" and cfg.get("api_base")
+            if name in model_names and cfg["model_type"] == "vllm" and cfg.get("api_base")
         }
 
+        if not vllm_requested:
+            return True  # 没请求 vLLM 模型，无需检查
+
         all_running = True
-        for name, cfg in vllm_models.items():
+        for name, cfg in vllm_requested.items():
             try:
                 parsed = urlparse(cfg["api_base"])
                 host = parsed.hostname or "localhost"
@@ -173,6 +179,7 @@ class ChartQAEvaluation:
                 api_base=api_base,
                 model_name=model_name,
                 output_dir=os.path.join(self.results_dir, output_name),
+                output_name=output_name,   # 文件名用简短名（如 gemma4）而非 vLLM 名
             )
             results = inferencer.run_inference(
                 self.data_path,
@@ -446,25 +453,26 @@ def main():
     # 运行
     system = ChartQAEvaluation(verbose=args.verbose)
 
-    # 检查 vLLM 服务（如果需要）
+    # 检查 vLLM 服务（只检查用户请求的模型）
     need_vllm = any(
         MODELS[m]["model_type"] == "vllm" for m in args.models
     )
-    if need_vllm and not system.check_services():
+    if need_vllm and not system.check_services(args.models):
         print()
-        print("⚠️  部分 vLLM 服务未运行！请先启动模型服务：")
+        print("⚠️  以下 vLLM 服务未运行，请先启动：")
         print()
-        print("  # 终端 1 — Gemma 4 E4B")
-        print("  vllm serve ./models/google/gemma-4-E4B-it/ \\")
-        print("      --served-model-name gemma-4-E4B-it \\")
-        print("      --port 8000 --max-model-len 8192")
-        print()
-        print("  # 终端 2 — LLaVA 1.5-7B")
-        print("  vllm serve ./models/swift/llava-1.5-7b-hf \\")
-        print("      --served-model-name llava-1.5-7b-hf \\")
-        print("      --port 8001 --max-model-len 8192")
-        print()
-        # 不退出，允许只跑 baseline 时忽略
+        for m in args.models:
+            cfg = MODELS[m]
+            if cfg["model_type"] != "vllm":
+                continue
+            port = parse_port_from_url(cfg["api_base"])
+            print(f"  # {cfg['description']}")
+            print(f"  vllm serve {cfg['model_path']} \\")
+            print(f"      --served-model-name {cfg['model_name']} \\")
+            print(f"      --port {port} --max-model-len 4096")
+            print()
+        print("⚠️ 显存不足？两个模型不能同时启动。先跑一个，Ctrl+C 停止后再启动另一个。")
+        # 如果用户请求的全是 vLLM 模型且一个都没启动，直接退出
         if all(MODELS[m]["model_type"] == "vllm" for m in args.models):
             sys.exit(1)
 

@@ -85,8 +85,8 @@ def prepare_chartqa_data(
     for idx in tqdm(range(total), desc="保存图片与标注"):
         sample = dataset[idx]
 
-        # 保存图片
-        img = sample["image"]
+        # 保存图片（image_path 字段存储的是 PIL Image 对象，直接 save）
+        img = sample["image_path"]
         img_filename = f"chart_{idx:06d}.png"
         img_path = os.path.join(img_dir, img_filename)
         img.save(img_path)
@@ -95,8 +95,8 @@ def prepare_chartqa_data(
             "id": idx,
             "image_path": os.path.join("images", img_filename),
             "image_path_abs": img_path,
-            "question": sample["question"],
-            "answer": sample["answer"],
+            "question": sample["Question"],
+            "answer": sample["Answer"],
         })
 
     # ================================================================

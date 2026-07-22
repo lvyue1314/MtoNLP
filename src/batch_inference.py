@@ -33,13 +33,15 @@ class VLLMInference:
         api_base: str,
         model_name: str,
         output_dir: str,
+        output_name: str = None,
         max_workers: int = None,
         max_tokens: int = 256,
         temperature: float = 0.1,
         timeout: int = 300,
     ):
         self.api_base = api_base
-        self.model_name = model_name
+        self.model_name = model_name                       # vLLM served-model-name（API 调用用）
+        self.output_name = output_name or model_name       # 输出文件名前缀（如 "gemma4"）
         self.output_dir = output_dir
         self.max_workers = max_workers or VLLM_CONCURRENT
         self.max_tokens = max_tokens
@@ -141,7 +143,7 @@ class VLLMInference:
             data = data[:max_samples]
             logger.info(f"限制样本数: {max_samples}")
 
-        output_path = os.path.join(self.output_dir, f"{self.model_name}_results.json")
+        output_path = os.path.join(self.output_dir, f"{self.output_name}_results.json")
 
         # ---- 断点续传：加载已有结果 ----
         existing_results = []
@@ -182,7 +184,7 @@ class VLLMInference:
             pbar = tqdm(
                 as_completed(futures),
                 total=len(futures),
-                desc=f"{self.model_name} 推理",
+                desc=f"{self.output_name} 推理",
             )
             for future in pbar:
                 result = future.result()
