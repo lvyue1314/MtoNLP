@@ -17,10 +17,10 @@ from urllib.parse import urlparse
 # ============================================================
 # 环境变量（可通过 export 覆盖）
 # ============================================================
-WORKSPACE = os.environ.get("WORKSPACE", "/MtoNLP")
+WORKSPACE = os.environ.get("WORKSPACE", "/workspace/repo/src/fine-tune/models/gemma4")
 LMU_DATA = os.environ.get("LMUData", os.path.join(WORKSPACE, "LMUData"))
 CHARTQA_DATA = os.environ.get("CHARTQA_DATA", os.path.join(LMU_DATA, "datasets", "ChartQA"))
-MODELS_DIR = os.environ.get("MODELS_DIR", os.path.join(WORKSPACE, "models"))
+MODELS_DIR = os.environ.get("MODELS_DIR", "/models")           # 模型文件独立存放在 /models（项目盘空间不足）
 RESULTS_DIR = os.environ.get("RESULTS_DIR", os.path.join(WORKSPACE, "results"))
 LOGS_DIR = os.environ.get("LOGS_DIR", os.path.join(WORKSPACE, "logs"))
 DATA_CACHE = os.environ.get("DATA_CACHE", os.path.join(WORKSPACE, "data_cache"))
@@ -166,18 +166,14 @@ def setup_logging(name: str = None, verbose: bool = False) -> logging.Logger:
 def resolve_gemma_path() -> str:
     """
     解析 Gemma 4 模型的实际磁盘路径。
-
-    HuggingFace/modelscope 下载的目录名可能与 config 中的不完全一致
-    （大小写差异），此函数尝试所有可能的路径变体。
     """
     candidates = [
         os.path.join(MODELS_DIR, "google", "gemma-4-E4B-it"),
         os.path.join(MODELS_DIR, "google", "gemma-4-e4b-it"),
-        os.path.join(MODELS_DIR, "google", "gemma-4-E4B-it"),
         os.path.join(MODELS_DIR, "gemma-4-E4B-it"),
         os.path.join(MODELS_DIR, "google", "gemma-4-e4b-it"),
-        "/workspace/models/google/gemma-4-E4B-it",   # 另一个常见挂载点
-        "/workspace/models/google/gemma-4-e4b-it",
+        "/models/google/gemma-4-E4B-it",
+        "/models/google/gemma-4-e4b-it",
     ]
     for path in candidates:
         if os.path.isdir(path):

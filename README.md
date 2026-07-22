@@ -16,36 +16,27 @@
 ## 📁 项目结构
 
 ```
-MtoNLP/
-├── README.md                     # 本文件
-├── install.sh                    # 一键安装（含全部依赖，AMD ROCm 自动检测）
-├── run.sh                        # 一键运行（支持 test/quick/full/tsne/gradio）
+/workspace/repo/src/fine-tune/models/gemma4/   ← 项目根目录 (git clone 到这里)
+├── README.md
+├── install_deps.sh                # 安装额外依赖（4个包）
+├── install_models.sh              # 下载模型到 /models
+├── run.sh                         # 一键运行
 │
-├── src/                          # 源代码
-│   ├── __init__.py               # 包初始化 + 公共 API 导出
-│   ├── __main__.py               # 支持 python -m src 启动
-│   ├── config.py                 # 统一配置（路径/模型/GPU/日志）
-│   ├── data_prepare.py           # 步骤1: 数据集下载与预处理
-│   ├── batch_inference.py        # 步骤2: vLLM 批量推理（Gemma4 / LLaVA）
-│   ├── baseline_ocr_llm.py       # 步骤2: OCR + LLM 基线推理
-│   ├── evaluator.py              # 步骤3: 评估指标（EM / Contains / F1）
-│   ├── error_analyzer.py         # 步骤3: 四类错误自动分类 + 错误矩阵
-│   ├── visualizer.py             # 步骤3: 可视化（柱状图/雷达图/热力图）
-│   ├── visualize_tsne.py         # 步骤3: t-SNE 交融机制可视化
-│   ├── gradio_app.py             # 步骤4: Gradio Web 演示界面
-│   └── main.py                   # 主入口（全流程编排，步骤1→5）
+├── src/                           # 源代码（同上）
+│   ├── config.py                  # 统一配置（路径在此修改）
+│   └── ...（其余 11 个 .py 文件）
 │
-├── results/                      # 评测结果输出
-│   ├── gemma4/                   # Gemma 4 推理结果 + 评估报告 + 误差分析
-│   ├── llava/                    # LLaVA 推理结果 + 评估报告 + 误差分析
-│   ├── baseline/                 # 基线推理结果 + 评估报告 + 误差分析
-│   └── comparison/               # 多模型对比报告 + 图表 + 错误矩阵
-│
-├── tsne_visualization/           # t-SNE 可视化输出
-├── error_figures/                # 误差分析截图
-├── logs/                         # 运行日志（含时间戳）
-└── models/                       # 模型文件（install.sh 自动下载）
+├── results/                       # 评测结果
+├── tsne_visualization/
+├── error_figures/
+└── logs/
+
+/models/                           ← 模型文件（独立路径，项目盘空间不足）
+├── google/gemma-4-E4B-it/
+└── swift/llava-1.5-7b-hf/
 ```
+
+> **路径说明**：项目本身在 `/workspace/repo/src/fine-tune/models/gemma4`，但模型文件因磁盘空间限制存放在 `/models`。
 
 ---
 
@@ -55,53 +46,35 @@ MtoNLP/
 
 | 项目 | 要求 |
 |------|------|
-| 硬件 | AMD GPU（ROCm 7.x），单卡 ≥ 16 GB 显存 |
+| 硬件 | AMD GPU（ROCm 7.2.1），单卡 48 GB 显存 |
 | 系统 | Linux（云平台 Ubuntu） |
-| Python | 3.10+ |
-| 存储 | ~50GB（模型 ~30GB + 数据 ~1GB） |
+| Python | 3.10+（云平台已预装） |
+| 存储 | /models 分区 ≥ 40GB（两个模型约 30GB） |
 
-### 2. 一键安装
-
-> **路径说明**：默认工作目录为 `/MtoNLP`。
-> 可通过 `export WORKSPACE=/your/path` 覆盖。
+### 2. 安装
 
 ```bash
-cd /
-git clone xxxx
-cd /MtoNLP
-chmod +x install.sh run.sh
-./install.sh
+# 克隆项目到云平台工作目录
+cd /workspace/repo/src/fine-tune/models/
+git clone <repo-url> gemma4
+cd gemma4
+
+# 赋予执行权限
+chmod +x install_deps.sh install_models.sh run.sh
+
+# 步骤 A: 安装额外依赖（仅 4 个缺失的包）
+./install_deps.sh
+
+# 步骤 B: 下载模型文件到 /models
+./install_models.sh
 ```
 
-脚本按顺序完成：
+#### 依赖说明
 
-1. **系统环境诊断**（OS/CPU/内存/磁盘/GPU/ROCm/Python — 含磁盘空间预警）
-2. 配置 pip 镜像源 + 安装 modelscope
-3. **下载模型**（Gemma 4 E4B + LLaVA 1.5-7B）+ 验证文件完整性
-4. 卸载旧版 torchvision/torchaudio
-5. **uv pip 安装 vLLM + PyTorch ROCm 全家桶**（`vllm==0.23.0+rocm723`）
-6. **uv pip 安装全部 Python 依赖**（datasets, paddleocr, gradio, transformers 等）
-7. 环境变量写入 `~/.bashrc`
-
-> 所有依赖直接写入 `install.sh`，不再使用独立的 `requirements.txt`。
-
-> **磁盘空间预警**：诊断步骤会检查可用空间是否 ≥ 60GB。不足时显示醒目的告警框，
-> 给出 10 秒倒计时 — 按 `Ctrl+C` 取消安装（清理空间后再试），超时则自动继续。
-
-#### 依赖清单（全部在 install.sh 中）
-
-| 安装阶段 | 包名 | 说明 |
-|----------|------|------|
-| 步骤 1 | `modelscope` | 模型下载工具 |
-| 步骤 5 | `vllm==0.23.0+rocm723`, `torchvision`, `torchaudio`, `fastapi[standard]==0.136.0` | vLLM + PyTorch ROCm 全家桶（阿里云镜像 + vLLM wheels） |
-| 步骤 6 | `datasets`, `pandas`, `numpy`, `Pillow` | 数据处理 |
-| 步骤 6 | `paddlepaddle`, `paddleocr` | OCR 文字提取 |
-| 步骤 6 | `openai`, `gradio` | API 调用 + Web 界面 |
-| 步骤 6 | `transformers`, `accelerate`, `sentencepiece`, `scikit-learn` | 模型推理 + 评估 |
-| 步骤 6 | `matplotlib`, `seaborn`, `tqdm` | 可视化 + 进度条 |
-| 步骤 6 | `huggingface_hub`, `urllib3` | 模型下载辅助 |
-
-> **设计原则**：所有依赖集中在 `install.sh` 单一文件中，按博客验证过的顺序安装，不再依赖外部 `requirements.txt`。
+| 来源 | 内容 |
+|------|------|
+| **云平台已预装** | torch 2.9.1, vllm 0.16.1, transformers 4.57.6, datasets 4.8.2, accelerate, fastapi, openai, matplotlib, seaborn, scikit-learn, pandas, numpy, Pillow, tqdm, sentencepiece, huggingface_hub 等 |
+| **install_deps.sh 安装** | `paddlepaddle`, `paddleocr`, `gradio`, `modelscope`（仅 4 个） |
 
 ### 3. 启动 vLLM 服务（⚠️ 串行启动，不可同时运行）
 
@@ -110,21 +83,21 @@ chmod +x install.sh run.sh
 
 ```bash
 # ====== 第一步：启动 Gemma 4 → 评测 → 停止 ======
-# 终端 1：启动 Gemma 4 服务
-cd /MtoNLP
-vllm serve ./models/google/gemma-4-E4B-it/ \
+# 终端 1：启动 Gemma 4 服务（模型在 /models 下）
+cd /workspace/repo/src/fine-tune/models/gemma4
+vllm serve /models/google/gemma-4-E4B-it/ \
     --port 8000 \
     --max-model-len 4096
 
 # 终端 2：等服务就绪（看到 "Application startup complete."），运行评测
-cd /MtoNLP
+cd /workspace/repo/src/fine-tune/models/gemma4
 ./run.sh gemma
 
 # 终端 1：评测完成后 Ctrl+C 停止 Gemma 4 服务
 
 # ====== 第二步：启动 LLaVA → 评测 → 停止 ======
 # 终端 1：启动 LLaVA 服务
-vllm serve ./models/swift/llava-1.5-7b-hf \
+vllm serve /models/swift/llava-1.5-7b-hf \
     --port 8001 \
     --max-model-len 4096 \
     --trust-remote-code
