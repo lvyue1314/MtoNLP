@@ -55,9 +55,9 @@
 
 ```bash
 # 克隆项目到云平台工作目录
-cd /workspace/repo/src/fine-tune/models/
-git clone <repo-url> gemma4
-cd gemma4
+cd /workspace/repo/src/fine-tune/models/gemma4
+git clone <repo-url> 
+cd ./MtoNLP
 
 # 赋予执行权限
 chmod +x install_deps.sh install_models.sh run.sh

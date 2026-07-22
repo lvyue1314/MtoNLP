@@ -148,17 +148,15 @@ def _get_ocr():
     if _ocr_instance is None:
         try:
             from paddleocr import PaddleOCR
-            import torch
-            _ocr_instance = PaddleOCR(
-                use_angle_cls=True,
-                lang="en",
-                show_log=False,
-                use_gpu=torch.cuda.is_available(),
-            )
+            _ocr_instance = PaddleOCR()
             logger.info("PaddleOCR 实例已创建（误差分析用）")
-        except ImportError:
-            logger.warning("PaddleOCR 未安装，OCR-aware 分类将回退")
-            _ocr_instance = None
+        except Exception:
+            # PaddleOCR 不可用（未安装/版本不兼容/平台限制）
+            # 误差分析自动回退到纯文本规则，不影响主流程
+            logger.info("PaddleOCR 不可用，误差分析将使用纯文本规则")
+            _ocr_instance = False   # 用 False 标记"已尝试但不可用"，避免重复尝试
+    if _ocr_instance is False:
+        return None
     return _ocr_instance
 
 
@@ -177,7 +175,7 @@ def get_ocr_text(image_path: str) -> str:
         return ""
 
     try:
-        result = ocr.ocr(image_path, cls=True)
+        result = ocr.ocr(image_path)
         if not result or not result[0]:
             return ""
         texts = [line[1][0] for line in result[0] if line and len(line) >= 2 and line[1][0]]

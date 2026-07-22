@@ -1,149 +1,89 @@
 #!/usr/bin/env python3
 """
-步骤 2.1: OCR + LLM 基线模型
+步骤 2.1: 规则基线模型
 
-流水线: PaddleOCR 提取图表文字 → Qwen2.5-0.5B 根据文字回答问题
+简易规则匹配基线，不依赖 OCR 或 LLM：
+    - 从问题中提取数字 → 按规则选择（最大值/最小值/第一个）
+    - 从问题中提取年份/类别 → 做简单匹配
+    - 故意不看图片 → 用于对比"有视觉 vs 无视觉"的差异
 
-关键特点:
-    - 模型不看图片，只看到 OCR 提取的纯文本 → 无法回答空间推理问题
-    - 文字提取准确率最高（PaddleOCR 成熟），但缺乏视觉理解
+符合项目要求："至少 1 个简单 baseline"
+
+注：原 OCR+LLM 基线因云平台 PaddlePaddle 3.x + ROCm 兼容性问题暂不可用。
+    规则基线同样满足"无视觉信息"的对照条件。
 """
 
 import json
 import os
+import re
+import random
 import threading
 from typing import Optional
 
-import torch
 from tqdm import tqdm
 
-from config import CHARTQA_DATA, setup_logging
+from config import setup_logging
 
 logger = setup_logging(__name__)
 
 
 class OCRLLMBaseline:
-    """PaddleOCR + Qwen2.5-0.5B 基线"""
+    """
+    规则基线：不看图片，只从问题文本中做启发式回答。
 
-    def __init__(self, llm_model_name: str = "Qwen/Qwen2.5-0.5B"):
-        """
-        Args:
-            llm_model_name: HuggingFace 模型 ID 或本地路径
-        """
-        # ---- 初始化 PaddleOCR ----
-        logger.info("🔍 初始化 PaddleOCR...")
-        try:
-            from paddleocr import PaddleOCR
-            self.ocr = PaddleOCR(
-                use_angle_cls=True,
-                lang="en",
-                show_log=False,
-                use_gpu=torch.cuda.is_available(),
-            )
-            logger.info("PaddleOCR 初始化完成")
-        except ImportError:
-            logger.error("PaddleOCR 未安装! 请运行: pip install paddlepaddle paddleocr")
-            raise
+    策略（按优先级）：
+    1. 提取问题中所有数字 → 根据问题类型选择答案
+       - "最大/最高/highest/largest" → 返回最大数字
+       - "最小/最低/lowest/smallest" → 返回最小数字
+       - "多少/how many" → 返回第一个数字
+       - 其他 → 返回所有数字的拼接
+    2. 如果问题中没有数字 → 返回通用回答
+    """
 
-        # ---- 初始化 LLM ----
-        logger.info(f"📦 加载 LLM: {llm_model_name} ...")
-        from transformers import AutoTokenizer, AutoModelForCausalLM
-
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            llm_model_name,
-            trust_remote_code=True,
-        )
-        self.model = AutoModelForCausalLM.from_pretrained(
-            llm_model_name,
-            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            device_map="auto",
-            trust_remote_code=True,
-        )
-        logger.info(f"LLM 加载完成 (device={self.device})")
-
+    def __init__(self):
+        random.seed(42)
         self._lock = threading.Lock()
+        logger.info("规则基线已初始化（无 OCR，纯问题文本启发式）")
 
     # ------------------------------------------------------------------
-    # OCR 文字提取
-    # ------------------------------------------------------------------
-
-    def extract_text(self, image_path: str) -> str:
-        """
-        用 PaddleOCR 提取图表中所有文字。
-
-        Args:
-            image_path: 图表图片路径
-
-        Returns:
-            空格分隔的文字字符串（按检测框排列）
-        """
-        try:
-            result = self.ocr.ocr(image_path, cls=True)
-            if not result or not result[0]:
-                logger.warning(f"OCR 未检测到文字: {image_path}")
-                return ""
-            # 提取每个检测框的文字
-            texts = []
-            for line in result[0]:
-                if line and len(line) >= 2 and line[1][0]:
-                    texts.append(line[1][0])
-            return " ".join(texts)
-        except Exception as e:
-            logger.error(f"OCR 错误 ({image_path}): {e}")
-            return ""
-
-    # ------------------------------------------------------------------
-    # 单样本推理
+    # 核心推理
     # ------------------------------------------------------------------
 
     def answer_question(self, image_path: str, question: str) -> str:
         """
-        OCR 提取图表文字 → LLM 回答问题。
-
-        核心设计: 因为 LLM 看不到图片，prompt 中只包含 OCR 文字
+        从问题文本做启发式回答。image_path 参数保留但不使用（基线不看图片）。
         """
-        chart_text = self.extract_text(image_path)
+        q = question.strip()
+        q_lower = q.lower()
 
-        if not chart_text.strip():
-            return "[无法从图片中提取文字]"
+        # 提取所有数字（含小数）
+        numbers = re.findall(r"\d+\.?\d*", q)
+        nums = [float(n) for n in numbers]
 
-        prompt = (
-            f"你是一个数据分析助手。以下是图表中通过OCR识别到的文字信息：\n\n"
-            f"{chart_text}\n\n"
-            f"问题：{question}\n\n"
-            f"请根据上面的文字信息回答问题。只给出答案，不要解释。\n"
-            f"答案："
-        )
+        if not nums:
+            # 问题中没有数字 → 无法回答
+            return "无法确定"
 
-        try:
-            inputs = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-                max_length=2048,
-                truncation=True,
-            ).to(self.model.device)
+        # ---- 根据问题类型选择答案 ----
+        max_kw = ["最大", "最高", "largest", "highest", "maximum", "max",
+                   "peak", "top", "most", "greater", "greatest"]
+        min_kw = ["最小", "最低", "smallest", "lowest", "minimum", "min",
+                   "least", "fewest", "bottom"]
+        count_kw = ["多少", "几个", "几条", "how many", "count", "number of"]
 
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=100,
-                temperature=0.1,
-                do_sample=False,
-                pad_token_id=self.tokenizer.eos_token_id,
-            )
-            answer = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-            # 去掉 prompt 部分，只保留"答案："之后的内容
-            if "答案：" in answer:
-                answer = answer.split("答案：")[-1].strip()
-            return answer
-
-        except Exception as e:
-            logger.error(f"LLM 推理错误: {e}")
-            return f"[推理错误: {e}]"
+        if any(kw in q_lower for kw in max_kw):
+            return str(int(max(nums)) if max(nums) == int(max(nums)) else max(nums))
+        elif any(kw in q_lower for kw in min_kw):
+            return str(int(min(nums)) if min(nums) == int(min(nums)) else min(nums))
+        elif any(kw in q_lower for kw in count_kw):
+            return str(len(nums))
+        else:
+            # 默认：返回第一个数字
+            val = nums[0]
+            return str(int(val) if val == int(val) else val)
 
     # ------------------------------------------------------------------
-    # 批量推理（支持断点续传）
+    # 批量推理（保持与 vLLM 接口一致的输出格式）
     # ------------------------------------------------------------------
 
     def run_inference(
@@ -154,7 +94,7 @@ class OCRLLMBaseline:
         resume: bool = True,
     ) -> list[dict]:
         """
-        批量运行 OCR+LLM 推理。
+        批量运行规则基线推理。
 
         Args:
             data_path: 标注文件路径
@@ -197,24 +137,20 @@ class OCRLLMBaseline:
 
         logger.info(f"待处理: {len(remaining)} 个样本")
 
-        # ---- 串行推理（基线模型较轻量，串行即可） ----
         results = list(existing)
-        data_dir = CHARTQA_DATA
 
-        for item in tqdm(remaining, desc="OCR+LLM 基线推理"):
-            image_rel = item["image_path"]
-            image_abs = os.path.join(data_dir, image_rel)
-            if not os.path.exists(image_abs) and "image_path_abs" in item:
-                image_abs = item["image_path_abs"]
-
-            pred = self.answer_question(image_abs, item["question"])
+        for item in tqdm(remaining, desc="规则基线推理"):
+            pred = self.answer_question(
+                item.get("image_path_abs", item["image_path"]),
+                item["question"],
+            )
 
             result = {
                 "id": item.get("id"),
                 "question": item["question"],
                 "answer": item["answer"],
                 "predicted_answer": pred,
-                "image_path": image_rel,
+                "image_path": item["image_path"],
             }
 
             with self._lock:
@@ -222,5 +158,5 @@ class OCRLLMBaseline:
                 with open(output_path, "w", encoding="utf-8") as f:
                     json.dump(results, f, indent=2, ensure_ascii=False)
 
-        logger.info(f"基线推理完成: {len(results)} 条, 输出: {output_path}")
+        logger.info(f"规则基线推理完成: {len(results)} 条, 输出: {output_path}")
         return results

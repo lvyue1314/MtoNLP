@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 # ============================================================
 # 环境变量（可通过 export 覆盖）
 # ============================================================
-WORKSPACE = os.environ.get("WORKSPACE", "/workspace/repo/src/fine-tune/models/gemma4")
+WORKSPACE = os.environ.get("WORKSPACE", "/workspace/repo/src/fine-tune/models/gemma4/MtoNLP")
 LMU_DATA = os.environ.get("LMUData", os.path.join(WORKSPACE, "LMUData"))
 CHARTQA_DATA = os.environ.get("CHARTQA_DATA", os.path.join(LMU_DATA, "datasets", "ChartQA"))
 MODELS_DIR = os.environ.get("MODELS_DIR", "/models")           # 模型文件独立存放在 /models（项目盘空间不足）

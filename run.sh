@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")"  # 切换到脚本所在目录
 
 # ---- 环境变量 ----
-export WORKSPACE=${WORKSPACE:-/workspace/repo/src/fine-tune/models/gemma4}
+export WORKSPACE=${WORKSPACE:-/workspace/repo/src/fine-tune/models/gemma4/MtoNLP}
 export LMUData=$WORKSPACE/LMUData
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 export PYTHONPATH=$WORKSPACE/src:$PYTHONPATH
@@ -51,7 +51,7 @@ show_help() {
 check_deps() {
     if [ ! -f "$WORKSPACE/.deps_installed" ]; then
         echo "📦 首次运行，安装依赖..."
-        bash install.sh
+        bash install_deps.sh
     fi
 }
 
