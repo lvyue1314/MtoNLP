@@ -250,17 +250,12 @@ def create_demo() -> gr.Blocks:
     # ---- 示例图片 ----
     demo_images = _find_demo_images(3)
 
-    # ---- CSS ----
-    custom_css = """
-    .result-box { border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin: 4px 0; }
-    .model-label { font-weight: bold; font-size: 1.1em; margin-bottom: 4px; }
-    """
+    CUSTOM_CSS = """
+.result-box { border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin: 4px 0; }
+.model-label { font-weight: bold; font-size: 1.1em; margin-bottom: 4px; }
+"""
 
-    with gr.Blocks(
-        title="📊 论文图表问答系统",
-        theme=gr.themes.Soft(),
-        css=custom_css,
-    ) as demo:
+    with gr.Blocks(title="📊 论文图表问答系统") as demo:
         # ============================================================
         # 标题
         # ============================================================
@@ -414,4 +409,6 @@ if __name__ == "__main__":
         server_name=args.host,
         server_port=args.port,
         share=args.share,
+        theme=gr.themes.Soft(),
+        css=CUSTOM_CSS,
     )
