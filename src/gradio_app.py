@@ -158,9 +158,14 @@ def run_multi_inference(image, question: str, models_selected: list) -> dict:
         tmp_path = image  # 已是文件路径
 
     question = question.strip()
-    results = {}
 
-    # ---- 对每个选中的模型推理 ----
+    # ---- 所有 3 个模型默认空值，选中才推理 ----
+    ALL_MODELS = ["Gemma 4", "LLaVA", "OCR+LLM Baseline"]
+    results = {}
+    for m in ALL_MODELS:
+        results[f"answer_{m}"] = ""
+        results[f"time_{m}"] = ""
+
     for model_label in models_selected:
         try:
             if model_label == "OCR+LLM Baseline":
@@ -175,7 +180,6 @@ def run_multi_inference(image, question: str, models_selected: list) -> dict:
             answer = f"❌ 未预期错误: {e}"
             elapsed = 0.0
 
-        # 存储到对应的输出字段
         results[f"answer_{model_label}"] = answer
         results[f"time_{model_label}"] = f"{elapsed:.2f} 秒"
 

@@ -76,42 +76,41 @@ chmod +x install_deps.sh install_models.sh run.sh
 | **云平台已预装** | torch 2.9.1, vllm 0.16.1, transformers 4.57.6, datasets 4.8.2, accelerate, fastapi, openai, matplotlib, seaborn, scikit-learn, pandas, numpy, Pillow, tqdm, sentencepiece, huggingface_hub 等 |
 | **install_deps.sh 安装** | `paddlepaddle`, `paddleocr`, `gradio`, `modelscope`（仅 4 个） |
 
-### 3. 启动 vLLM 服务（⚠️ 串行启动，不可同时运行）
+### 3. 启动 vLLM 服务（⚠️ 串行，不可同时运行）
 
-> **显存限制**：单卡 48GB 显存无法同时运行 Gemma 4 E4B + LLaVA 1.5-7B。
-> 必须**先跑完一个模型 → 停止服务 → 再启动下一个**。
+> **显存限制**：48GB 无法同时跑两个 7B 模型。**先跑完一个 → 停止 → 再启动下一个**。
+> **关键**：必须加 `--served-model-name`，否则 batch_inference 会报 404。
 
 ```bash
-# ====== 第一步：启动 Gemma 4 → 评测 → 停止 ======
-# 终端 1：启动 Gemma 4 服务（模型在 /models 下）
-cd /workspace/repo/src/fine-tune/models/gemma4
+# ====== 第一步：Gemma 4 ======
+# 终端 1：启动服务
 vllm serve /models/google/gemma-4-E4B-it/ \
+    --served-model-name gemma-4-E4B-it \
     --port 8000 \
     --max-model-len 4096
 
-# 终端 2：等服务就绪（看到 "Application startup complete."），运行评测
-cd /workspace/repo/src/fine-tune/models/gemma4
-./run.sh gemma
+# 终端 2：等服务就绪（"Application startup complete."），运行
+cd /workspace/repo/src/fine-tune/models/gemma4/MtoNLP
+./run.sh --models gemma4 --no-resume
 
-# 终端 1：评测完成后 Ctrl+C 停止 Gemma 4 服务
+# Gemma4 跑完后 Ctrl+C 停服务
 
-# ====== 第二步：启动 LLaVA → 评测 → 停止 ======
-# 终端 1：启动 LLaVA 服务
+# ====== 第二步：LLaVA ======
+# 终端 1：启动服务
 vllm serve /models/swift/llava-1.5-7b-hf \
+    --served-model-name llava-1.5-7b-hf \
     --port 8001 \
     --max-model-len 4096 \
     --trust-remote-code
 
-# 终端 2：等服务就绪，运行评测
-./run.sh llava
+# 终端 2：服务就绪后运行
+./run.sh --models llava --no-resume
 
-# 终端 1：评测完成后 Ctrl+C 停止 LLaVA 服务
+# LLaVA 跑完后 Ctrl+C 停服务
 
-# ====== 基线模型不需要 vLLM 服务，直接跑 ======
-./run.sh baseline
+# ====== 基线不需要 vLLM，直接跑 ======
+./run.sh --models baseline --no-resume
 ```
-
-看到 `Application startup complete.` 即服务就绪。
 
 ### 4. 运行评测
 
@@ -130,8 +129,60 @@ vllm serve /models/swift/llava-1.5-7b-hf \
 ```bash
 ./run.sh eval              # 已有推理结果 → 只运行评测+误差分析+图表
 ./run.sh viz               # 只生成可视化图表
-./run.sh tsne --max-samples 30              # t-SNE 交融机制分析
-./run.sh tsne --max-samples 10 --skip-llava # 仅 Gemma 4 t-SNE
+```
+
+### 6. t-SNE 交融机制分析
+
+```bash
+# 全量 2500 样本（约 25 分钟）
+python src/visualize_tsne.py --max-samples 2500
+
+# 快速验证（30 样本，约 1 分钟）
+python src/visualize_tsne.py --max-samples 30
+
+# 打包
+tar -czf tsne_results_v2.tar.gz tsne_visualization/
+```
+
+### 7. 结果打包下载
+
+```bash
+# 评测结果 + 环境快照
+tar -czf final_results_v3.tar.gz results/ requirements_cloud_lock.txt
+
+# t-SNE 结果
+tar -czf tsne_results_v2.tar.gz tsne_visualization/
+
+# 数据集图片
+tar -czf chartqa_images.tar.gz LMUData/datasets/ChartQA/images/
+
+# 带图片路径的逐题对比表
+python3 -c "
+import json, csv, re
+g=json.load(open('results/gemma4/gemma4_results.json',encoding='utf-8'))
+l=json.load(open('results/llava/llava_results.json',encoding='utf-8'))
+b=json.load(open('results/baseline/baseline_results.json',encoding='utf-8'))
+def cm(pred,gt):
+    def norm(s):
+        o=str(s).strip();t=o.lower()
+        t=re.sub(r'(\d)\.(\d)',r'\1<DOT>\2',t)
+        t=re.sub(r'[^a-z0-9\s]','',t)
+        t=t.replace('<DOT>','.').strip()
+        return t if t else o
+    p,g=norm(pred),norm(gt)
+    if not p or not g: return False
+    return g in p or p in g
+with open('results/comparison/all_results_with_images.csv','w',encoding='utf-8-sig') as f:
+    f.write('id,image_path,question,answer,gemma4_pred,gemma4_correct,llava_pred,llava_correct,baseline_pred,baseline_correct\n')
+    for i in range(2500):
+        q=g[i]['question'].replace('\"','\"\"'); a=g[i]['answer'].replace('\"','\"\"')
+        img=g[i]['image_path']
+        gp=g[i]['predicted_answer'].replace('\"','\"\"').replace('\n',' ')
+        lp=l[i]['predicted_answer'].replace('\"','\"\"').replace('\n',' ')
+        bp=b[i]['predicted_answer'].replace('\"','\"\"').replace('\n',' ')
+        f.write(f'{i},\"{img}\",\"{q}\",\"{a}\",\"{gp}\",{1 if cm(g[i][\"predicted_answer\"],g[i][\"answer\"]) else 0},\"{lp}\",{1 if cm(l[i][\"predicted_answer\"],l[i][\"answer\"]) else 0},\"{bp}\",{1 if cm(b[i][\"predicted_answer\"],b[i][\"answer\"]) else 0}\n')
+print('Done')
+"
 ```
 
 ### 6. Gradio 演示
@@ -246,17 +297,34 @@ python -m src.main --no-resume --max-samples 50
 
 ---
 
-## ⚠️ 注意事项
+## ⚠️ 常见问题
 
-| 场景 | 建议 |
-|------|------|
-| 云平台实例关闭 | 虚拟环境重置，用 `./install.sh` 重建 |
-| 显存不足 | vLLM 加 `--max-model-len 4096`；t-SNE 加 `--skip-llava` |
-| 端口被占用 | 检查 8000/8001，或修改 `config.py` 中 `api_base` |
-| 首次运行 PaddleOCR | 会自动下载模型到 `~/.paddleocr/`，需网络畅通 |
-| 断点续传 | 默认开启；结果实时保存，中断后自动跳过已完成样本 |
-| 数字答案匹配 | `normalize_answer` 保留数字中的小数点（3.14 不会被错误标准化为 314） |
-| GPU 并发 | `VLLM_CONCURRENT` 默认 ≤2，避免 vLLM 服务端过载 |
+### 模型推理
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `model does not exist` 404 | vLLM 启动时未加 `--served-model-name` | 重启 vLLM 服务并加上该参数 |
+| 推理结果全部 IMAGE_NOT_FOUND | 图片路径不对 | 检查 config.py 中 CHARTQA_DATA |
+| 两个模型不能同时跑 | 48GB 显存不够 | 串行：Gemma4→停止→LLaVA |
+| Gemma4 启动报 `model type gemma4 not recognized` | transformers 版本太旧 | `uv pip install vllm --extra-index-url https://wheels.vllm.ai/rocm/` 会自动升级 transformers |
+| 推理速度慢 | 每张图 1.3 秒 | 正常速度，2500 条约 50 分钟 |
+
+### 测评指标
+
+| 问题 | 根因 | 解决 |
+|------|------|------|
+| 基线 CM=50.4% 虚高 | 中文"无法确定"被 normalize 成空串 → `"" in "3"` 返回 True | 已在 `evaluator.py:46` 修复，正确值 6.2% |
+| 跨模型交叉分析不匹配 | `as_completed` 返回随机顺序 | 已在 `batch_inference.py:177` 修复，使用 indexed_results |
+| 小数点被去除 (3.14→314) | `re.sub(r"[^a-z0-9\s]","",s)` | 已在 `evaluator.py:47` 修复 |
+
+### t-SNE 分析
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `n_iter` 参数报错 | sklearn 1.2+ 改名为 `max_iter` | 已修复 |
+| 图表显示 "t-SNE Failed" | 多个原因（最常：perplexity 太高） | 已添加降级重试 + 错误日志 |
+| Gemma4 图片加载失败 | torchvision ROCm 版无 PNG 支持 | 已改为 PIL 预加载 |
+| LLaVA 图片加载失败 | processor API 参数顺序 | `images=` 放在 `text=` 前面 |
 
 ---
 
