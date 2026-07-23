@@ -185,11 +185,22 @@ print('Done')
 "
 ```
 
-### 6. Gradio 演示
+### 8. Gradio 演示
+
+> 需要先启动至少一个 vLLM 服务（Gemma 4 或 LLaVA），基线无需服务。
 
 ```bash
-./run.sh gradio                         # 默认 http://0.0.0.0:7860
-./run.sh gradio --port 8080 --share     # 自定义端口 + 公网链接
+# 启动（frpc 已内置在仓库中）
+python src/gradio_app.py --share
+
+# 公网链接格式: https://xxx.gradio.live（有效 1 周）
+# 在浏览器中上传图表、选模型、实时推理
+```
+
+### 9. 环境快照
+
+```bash
+pip freeze > requirements_cloud_final.txt
 ```
 
 ---
