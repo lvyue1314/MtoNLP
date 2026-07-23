@@ -183,7 +183,15 @@ def run_multi_inference(image, question: str, models_selected: list) -> dict:
         results[f"answer_{model_label}"] = answer
         results[f"time_{model_label}"] = f"{elapsed:.2f} 秒"
 
-    return results
+    # Gradio 需要 6 个独立返回值（3 模型 × answer+time），按固定顺序
+    return (
+        results["answer_Gemma 4"],
+        results["time_Gemma 4"],
+        results["answer_LLaVA"],
+        results["time_LLaVA"],
+        results["answer_OCR+LLM Baseline"],
+        results["time_OCR+LLM Baseline"],
+    )
 
 
 # ================================================================
