@@ -92,21 +92,12 @@ def _load_sample_paths(max_samples: int = 30) -> list[dict]:
     with open(ann_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    # 简单问题：包含 what, how many, value
-    simple_keywords = ["what", "how many", "value", "number", "how much"]
-    simple = [
-        d for d in data
-        if any(kw in d.get("question", "").lower() for kw in simple_keywords)
-    ]
-    complex_cases = [d for d in data if d not in simple]
-
-    half = max_samples // 2
-    sampled = simple[:half] + complex_cases[:max_samples - half]
-    random.shuffle(sampled)
+    # 直接取前 N 条（不再按简单/复杂过滤，确保与评测数据一致）
+    sampled = random.sample(data, min(max_samples, len(data)))
 
     # 转换路径为绝对路径
     result = []
-    for item in sampled[:max_samples]:
+    for item in sampled:
         abs_path = os.path.join(CHARTQA_DATA, item["image_path"])
         if not os.path.exists(abs_path) and "image_path_abs" in item:
             abs_path = item["image_path_abs"]
