@@ -187,15 +187,36 @@ print('Done')
 
 ### 8. Gradio 演示
 
+#### 公网访问原理
+
+云平台只有内网 IP，通过 frp 隧道将 Gradio 映射到公网：
+
+```
+云平台(内网)          HuggingFace中转          你的电脑(公网)
+Gradio :7860 ←─frpc──→ frp服务器 ──→ xxx.gradio.live ──→ 浏览器
+```
+
+`frpc` 二进制已内置在仓库 `gradio/frpc_linux_amd64_v0.3` 中。
+
+#### 首次部署（一次性）
+
+```bash
+mkdir -p /root/.cache/huggingface/gradio/frpc
+cp gradio/frpc_linux_amd64_v0.3 /root/.cache/huggingface/gradio/frpc/
+chmod +x /root/.cache/huggingface/gradio/frpc/frpc_linux_amd64_v0.3
+uv pip install "gradio>=6.0" --no-cache
+```
+
+#### 启动
+
 > 需要先启动至少一个 vLLM 服务（Gemma 4 或 LLaVA），基线无需服务。
 
 ```bash
-# 启动（frpc 已内置在仓库中）
 python src/gradio_app.py --share
-
-# 公网链接格式: https://xxx.gradio.live（有效 1 周）
-# 在浏览器中上传图表、选模型、实时推理
+# → https://xxx.gradio.live（有效 1 周）
 ```
+
+> **注意**：切换 vLLM 服务后需重启 Gradio（`Ctrl+C` 后重新 `python src/gradio_app.py --share`）。
 
 ### 9. 环境快照
 
