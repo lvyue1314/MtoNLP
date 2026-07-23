@@ -142,16 +142,19 @@ def extract_llava_features(
         {"layer_0": {"visual": np.ndarray(N_samples, D), "text": np.ndarray(N_samples, D)}, ...}
     """
     target_layers = target_layers or UNIFIED_LAYERS
-    model_id = model_id or MODELS["llava"].get("hf_model_id", "llava-hf/llava-1.5-7b-hf")
 
-    logger.info(f"🔄 加载 LLaVA 模型: {model_id}")
+    # 优先本地路径（/models/swift/llava-1.5-7b-hf），避免重复下载
+    local_path = os.path.join(MODELS_DIR, "swift", "llava-1.5-7b-hf")
+    actual_id = local_path if os.path.exists(local_path) else (model_id or MODELS["llava"].get("hf_model_id", "llava-hf/llava-1.5-7b-hf"))
+
+    logger.info(f"🔄 加载 LLaVA 模型: {actual_id}")
     from transformers import LlavaProcessor, LlavaForConditionalGeneration
     from PIL import Image
 
     try:
-        processor = LlavaProcessor.from_pretrained(model_id)
+        processor = LlavaProcessor.from_pretrained(actual_id)
         model = LlavaForConditionalGeneration.from_pretrained(
-            model_id,
+            actual_id,
             torch_dtype=torch.float16,
             device_map="auto",
         )
