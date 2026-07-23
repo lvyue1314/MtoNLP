@@ -387,13 +387,13 @@ def _tsne_subplot(ax, visual: np.ndarray, text: np.ndarray,
         if np.any(np.isnan(all_tokens)) or np.any(np.isinf(all_tokens)):
             raise ValueError(f"Data contains NaN or Inf (shape={all_tokens.shape})")
         emb = TSNE(n_components=2, random_state=42, perplexity=perp,
-                   n_iter=1000).fit_transform(all_tokens)
+                   max_iter=1000).fit_transform(all_tokens)
     except Exception as e:
         # 降级：用更低的 perplexity 再试一次
         logger.warning(f"t-SNE 第1次失败 (perp={perp}, shape={all_tokens.shape}): {e}")
         try:
             emb = TSNE(n_components=2, random_state=42, perplexity=5,
-                       n_iter=500, learning_rate='auto', init='pca').fit_transform(all_tokens)
+                       max_iter=500, learning_rate='auto', init='pca').fit_transform(all_tokens)
         except Exception as e2:
             logger.error(f"t-SNE 第2次失败: {e2}")
             ax.text(0.5, 0.5, f"t-SNE Failed\n{str(e2)[:60]}", ha="center", va="center", fontsize=7,
