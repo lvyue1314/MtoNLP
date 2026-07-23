@@ -1,0 +1,9 @@
+{
+  "llava": {
+    "total_failed": 2497,
+    "OCR_Error": 0,
+    "Visual_Localization_Failure": 337,
+    "Reasoning_Error": 797,
+    "Hallucination": 1363
+  }
+}

@@ -126,13 +126,17 @@ def extract_keywords(text: str) -> set[str]:
 
 def normalize_for_compare(text: str) -> str:
     """标准化文本用于比较：去标点（保留数字小数点）、小写、合并空格"""
-    text = str(text).strip().lower()
+    original = str(text).strip()
+    text = original.lower()
     # 保护数字中的小数点
     text = re.sub(r"(\d)\.(\d)", r"\1<DOT>\2", text)
     text = re.sub(r"[^a-z0-9\s]", "", text)
     text = text.replace("<DOT>", ".")
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    text = re.sub(r"\s+", " ", text).strip()
+    # 修复: 纯中文文本(如"无法确定")去除非ascii后变空串 → 保留原文
+    if not text:
+        text = original
+    return text
 
 
 # ================================================================

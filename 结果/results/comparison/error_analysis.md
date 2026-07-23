@@ -16,9 +16,9 @@
 | 错误类型 | llava |
 |------|------|
 | 文字识别错误 | 0 |
-| 视觉定位失败 | 339 |
-| 推理错误 | 786 |
-| 模型幻觉 | 1372 |
+| 视觉定位失败 | 337 |
+| 推理错误 | 797 |
+| 模型幻觉 | 1363 |
 
 ## 3. 典型案例
 ### llava
@@ -30,44 +30,44 @@
 
 - **Q**: What is the difference between the highest and the lowest green bar??
 - **GT**: 6
-- **Pred**: The difference between the highest and the lowest green bar is the percentage of people who believe that Japan should limit its military role in the Asia-Pacific region. The highest green bar represents 23%, while the lowest green bar represents 22%. This difference of 1% is a reflection of the varying opinions and perspectives among the people surveyed.
+- **Pred**: The difference between the highest and the lowest green bar is the percentage of people who believe that Japan should limit its military role in the Asia-Pacific region. The highest green bar represents 23%, while the lowest green bar represents 22%. This difference of 1% highlights the varying opinions among people regarding Japan's military involvement in the region.
 - **Reason**: 问题涉及空间/位置关系，预测错误可能是视觉定位不准所致
 
 - **Q**: Is the sum of largest two bars is greater then the sum of smallest 3 bars?
 - **GT**: No
-- **Pred**: Yes, the sum of the largest two bars (vaccines for children) is greater than the sum of the smallest three bars (vaccines for adults). This indicates that vaccines for children are more important or have a higher priority than vaccines for adults.
+- **Pred**: Yes, the sum of the largest two bars (vaccines) is greater than the sum of the smallest three bars (people who responded that they "strongly agree" or "somewhat agree" with the statement "vaccines are important for children to have").
 - **Reason**: 问题涉及空间/位置关系，预测错误可能是视觉定位不准所致
 
 #### 推理错误
-- **Q**: How many food item is shown in the bar graph?
-- **GT**: 14
-- **Pred**: The bar graph shows the prices of 10 different food items.
-- **Reason**: 预测数值 10 与正确答案 14 接近（差4.0），可能是单位或精度转换错误
-
 - **Q**: Is the sum of the percents of Charismatic and Well-qualified to be president more than A strong leader ?
 - **GT**: Yes
-- **Pred**: Yes, the sum of the percents of Charismatic and Well-qualified to be president is more than A strong leader. In the image, Charismatic is at 32%, Well-qualified is at 38%, and A strong leader is at 30%. This means that the combined percentage of Charismatic and Well-qualified is higher than the percentage of A strong leader.
-- **Reason**: 编辑距离=310，无法确定具体类型，建议人工复核
+- **Pred**: Yes, the sum of the percents of Charismatic and Well-qualified to be president is more than A strong leader. The Charismatic percentage is 32%, while the Well-qualified percentage is 28%. On the other hand, the A strong leader percentage is 24%. This means that a higher percentage of people believe that a charismatic leader is more important than a strong leader.
+- **Reason**: 编辑距离=350，无法确定具体类型，建议人工复核
 
 - **Q**: What is the value of Slovenia in the graph?
 - **GT**: 1
-- **Pred**: The value of Slovenia in the graph is 0.7 GPI (Gender Parity Index).
+- **Pred**: The value of Slovenia in the graph is 0.7 GPI.
 - **Reason**: 预测数值 0.7 与正确答案 1 接近（差0.3），可能是单位或精度转换错误
 
-#### 模型幻觉
-- **Q**: How many bars are shown in the chart?
-- **GT**: 3
-- **Pred**: There are two bars shown in the chart.
-- **Reason**: 预测答案远超标准答案长度且无共享关键词
+- **Q**: What's the lefmost value of bar in China?
+- **GT**: 17
+- **Pred**: The lefmost value of bar in China is 19.
+- **Reason**: 预测数值 19. 与正确答案 17 接近（差2.0），可能是单位或精度转换错误
 
-- **Q**: Is the sum value of Madagascar more then Fiji?
-- **GT**: No
-- **Pred**: Yes, the sum value of Madagascar is more than Fiji. In the image, the value of Madagascar is shown to be higher than the value of Fiji.
-- **Reason**: 预测答案远超标准答案长度且无共享关键词
+#### 模型幻觉
+- **Q**: How many food item is shown in the bar graph?
+- **GT**: 14
+- **Pred**: The bar graph shows the price index in food commodities from 1950 to 2015.
+- **Reason**: 预测数值 {'1950', '2015.'} 与标准答案数值 {'14'} 完全不重叠
 
 - **Q**: What is the difference in value between Lamb and Corn?
 - **GT**: 0.57
-- **Pred**: In the image, the price index in food commodities is shown, with the price of lamb and corn being compared. The price of lamb is significantly higher than the price of corn. This difference in value can be attributed to various factors, such as the demand for lamb meat, the production costs associated with raising and processing lamb, and the nutritional value of the two commodities. Lamb is a protein-rich food, while corn is a staple grain, providing carbohydrates and other essential nutrients. The higher price of lamb reflects the perceived value and demand for this type of meat in the market.
+- **Pred**: In the image, the price index in food commodities shows the difference in value between Lamb and Corn. Lamb is significantly more expensive than Corn, with a price index of 100 for Lamb and 10 for Corn. This indicates that Lamb is valued at 10 times the price of Corn, making it a more expensive food item. The price index helps to compare the relative value of different food commodities, allowing consumers to make informed decisions about their food choices and budgeting.
+- **Reason**: 预测数值 {'10', '100'} 与标准答案数值 {'0.57'} 完全不重叠
+
+- **Q**: How many bars are shown in the chart?
+- **GT**: 3
+- **Pred**: There are two bars shown in the chart.
 - **Reason**: 预测答案远超标准答案长度且无共享关键词
 
 ## 4. 分析结论

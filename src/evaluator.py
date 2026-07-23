@@ -42,13 +42,17 @@ class Evaluator:
 
         只保留字母、数字和空格，移除其他符号。
         """
-        answer = str(answer).strip().lower()
-        # 保护数字中的小数点：先将 "3.14" 替换为 "3<DOT>14"，再去掉其他标点，再还原
+        original = str(answer).strip()
+        answer = original.lower()
+        # 保护数字中的小数点
         answer = re.sub(r"(\d)\.(\d)", r"\1<DOT>\2", answer)
         answer = re.sub(r"[^a-z0-9\s]", "", answer)
         answer = answer.replace("<DOT>", ".")
-        answer = re.sub(r"\s+", " ", answer)
-        return answer.strip()
+        answer = re.sub(r"\s+", " ", answer).strip()
+        # 修复: 纯中文文本(如"无法确定")被strip后变空串 → 保留原文
+        if not answer:
+            answer = original
+        return answer
 
     # ------------------------------------------------------------------
     # 指标计算
