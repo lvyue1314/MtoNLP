@@ -1,0 +1,23 @@
+{
+  "gemma4": {
+    "total_failed": 2500,
+    "OCR_Error": 0,
+    "Visual_Localization_Failure": 218,
+    "Reasoning_Error": 1739,
+    "Hallucination": 543
+  },
+  "llava": {
+    "total_failed": 2497,
+    "OCR_Error": 0,
+    "Visual_Localization_Failure": 337,
+    "Reasoning_Error": 797,
+    "Hallucination": 1363
+  },
+  "baseline": {
+    "total_failed": 2493,
+    "OCR_Error": 121,
+    "Visual_Localization_Failure": 0,
+    "Reasoning_Error": 1259,
+    "Hallucination": 1113
+  }
+}

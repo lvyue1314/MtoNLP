@@ -1,0 +1,10 @@
+{
+  "Gemma_only": 1521,
+  "LLaVA_only": 36,
+  "Baseline_only": 39,
+  "Gemma_LLaVA": 227,
+  "Gemma_Baseline": 100,
+  "LLaVA_Baseline": 0,
+  "All_three": 17,
+  "None": 560
+}
