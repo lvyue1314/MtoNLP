@@ -173,7 +173,7 @@ def extract_llava_features(
         try:
             prompt = f"USER: <image>\n{sample['question']}\nASSISTANT:"
             image = Image.open(sample["image_path"]).convert("RGB")
-            inputs = processor(text=prompt, images=image, return_tensors="pt").to(model.device)
+            inputs = processor(prompt, image, return_tensors="pt").to(model.device)
 
             with torch.no_grad():
                 outputs = model(**inputs, output_hidden_states=True)
@@ -267,20 +267,11 @@ def extract_gemma_features(
 
     for sample in tqdm(samples, desc="Gemma 4 特征提取"):
         try:
-            # 用 PIL 预加载图片（绕过 torchvision PNG 解码问题）
             pil_img = PILImage.open(sample["image_path"]).convert("RGB")
-            messages = [{
-                "role": "user",
-                "content": [
-                    {"type": "image"},
-                    {"type": "text", "text": sample["question"]},
-                ],
-            }]
-            inputs = processor.apply_chat_template(
-                messages,
-                images=[pil_img],
-                add_generation_prompt=True,
-                tokenize=True,
+            # 直接用 processor 传 PIL Image，绕过 torchvision PNG 解码
+            inputs = processor(
+                text=sample["question"],
+                images=pil_img,
                 return_tensors="pt",
             ).to(model.device)
 
