@@ -1,0 +1,29 @@
+[
+  {
+    "model": "baseline",
+    "exact_match": 0.28,
+    "contains_match": 6.24,
+    "avg_f1": 0.28,
+    "total_samples": 2500,
+    "success_count": 7,
+    "failed_count": 2493
+  },
+  {
+    "model": "llava",
+    "exact_match": 0.12,
+    "contains_match": 11.2,
+    "avg_f1": 1.77,
+    "total_samples": 2500,
+    "success_count": 3,
+    "failed_count": 2497
+  },
+  {
+    "model": "gemma4",
+    "exact_match": 0.0,
+    "contains_match": 74.68,
+    "avg_f1": 8.4,
+    "total_samples": 2500,
+    "success_count": 0,
+    "failed_count": 2500
+  }
+]

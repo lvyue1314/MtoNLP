@@ -391,7 +391,7 @@ def _tsne_subplot(ax, visual: np.ndarray, text: np.ndarray,
         labels = labels[idx]
 
     try:
-        emb = TSNE(n_components=2, random_state=42, perplexity=min(30, len(all_tokens)//2-1),
+        emb = TSNE(n_components=2, random_state=42, perplexity=min(15, max(5, len(all_tokens)//3-1)),
                    n_iter=1000).fit_transform(all_tokens)
     except Exception:
         ax.text(0.5, 0.5, "t-SNE Failed", ha="center", va="center", transform=ax.transAxes)
