@@ -124,6 +124,15 @@ def extract_keywords(text: str) -> set[str]:
     return numbers | words
 
 
+def _contains_match(pred: str, gt: str) -> bool:
+    """修复后的 Contains Match（空串安全）"""
+    p = normalize_for_compare(pred)
+    g = normalize_for_compare(gt)
+    if not p or not g:
+        return False
+    return g in p or p in g
+
+
 def normalize_for_compare(text: str) -> str:
     """标准化文本用于比较：去标点（保留数字小数点）、小写、合并空格"""
     original = str(text).strip()
@@ -373,9 +382,8 @@ class ErrorAnalyzer:
             if r.get("status") == "error":
                 failed.append(r)
             else:
-                pred_norm = normalize_for_compare(r.get("predicted_answer", ""))
-                gt_norm = normalize_for_compare(r.get("answer", ""))
-                if pred_norm != gt_norm:
+                # 用 Contains Match 判断是否真正答错（避免 Gemma4 冗长回答全被误判）
+                if not _contains_match(r.get("predicted_answer", ""), r.get("answer", "")):
                     failed.append(r)
 
         logger.info(f"开始分类 {len(failed)} 个失败案例 ({model_type}) ...")
