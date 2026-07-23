@@ -7,8 +7,54 @@
 set -e
 
 echo "=========================================="
-echo "📦 ChartQA-X 评测系统 - 依赖安装"
+echo "📦 ChartQA-X 评测系统 - 环境诊断与依赖安装"
 echo "=========================================="
+
+# ---- 环境变量 ----
+export WORKSPACE=${WORKSPACE:-/workspace/repo/src/fine-tune/models/gemma4/MtoNLP}
+
+# ============================================================
+# 步骤 0: 系统环境诊断
+# ============================================================
+echo ""
+echo "--- 操作系统 & 内核 ---"
+if [ -f /etc/os-release ]; then grep -E "^NAME=|^VERSION=" /etc/os-release; fi
+echo "内核: $(uname -r)"
+echo "架构: $(uname -m)"
+
+echo ""
+echo "--- CPU ---"
+if command -v lscpu &>/dev/null; then lscpu | grep -E "Model name|Core|CPU\(s\)" | head -3
+else cat /proc/cpuinfo | grep "model name" | head -1; fi
+
+echo ""
+echo "--- 系统内存 ---"
+free -h || cat /proc/meminfo | grep -E "MemTotal|MemAvailable"
+
+echo ""
+echo "--- 磁盘空间 ---"
+df -h . | tail -1
+if [ -d "$WORKSPACE" ]; then echo "WORKSPACE: $(df -h "$WORKSPACE" | tail -1 | awk '{print $4}')"; fi
+if [ -d /models ]; then echo "/models:    $(df -h /models | tail -1 | awk '{print $4}')"; fi
+
+echo ""
+echo "--- GPU 信息 ---"
+if command -v rocm-smi &>/dev/null; then rocm-smi --showproductname 2>/dev/null; rocm-smi --showmeminfo vram 2>/dev/null
+elif command -v amd-smi &>/dev/null; then amd-smi 2>/dev/null; fi
+
+echo ""
+echo "--- ROCm 版本 ---"
+if [ -f /opt/rocm/.info/version ]; then cat /opt/rocm/.info/version; fi
+
+echo ""
+echo "--- Python 环境 ---"
+python3 --version 2>/dev/null || python --version
+python3 -c "import torch; print(f'PyTorch {torch.__version__}, GPU: {torch.cuda.is_available()}')" 2>/dev/null || echo "PyTorch 未安装"
+python3 -c "import vllm; print(f'vLLM {vllm.__version__}')" 2>/dev/null || echo "vLLM 未安装"
+
+echo ""
+echo "✅ 系统诊断完成"
+echo ""
 
 # ---- pip 镜像 ----
 pip config set global.index-url https://mirrors.cloud.tencent.com/pypi/simple/ 2>/dev/null || true
