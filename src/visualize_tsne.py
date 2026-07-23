@@ -62,7 +62,6 @@ def _free_gpu_memory():
     import gc
     gc.collect()
     try:
-        import torch
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
@@ -214,7 +213,6 @@ def extract_llava_features(
     # 显式释放模型以节省显存（调用方也会执行 _free_gpu_memory）
     del model
     try:
-        import torch
         torch.cuda.empty_cache()
     except Exception:
         pass
@@ -241,15 +239,16 @@ def extract_gemma_features(
     actual_id = local_path if os.path.exists(local_path) else (model_id or "google/gemma-4-e4b-it")
 
     logger.info(f"🔄 加载 Gemma 4 模型: {actual_id}")
-    from transformers import AutoProcessor, AutoModelForVision2Seq
+    from transformers import AutoProcessor, AutoModel
 
     try:
         processor = AutoProcessor.from_pretrained(actual_id, trust_remote_code=True)
-        model = AutoModelForVision2Seq.from_pretrained(
+        model = AutoModel.from_pretrained(
             actual_id,
             torch_dtype=torch.float16,
             device_map="auto",
             trust_remote_code=True,
+            output_hidden_states=False,  # 我们会在 forward 时手动请求
         )
         model.eval()
     except Exception as e:
@@ -309,7 +308,6 @@ def extract_gemma_features(
     # 显式释放模型以节省显存
     del model
     try:
-        import torch
         torch.cuda.empty_cache()
     except Exception:
         pass
